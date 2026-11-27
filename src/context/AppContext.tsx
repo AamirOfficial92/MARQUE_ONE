@@ -55,6 +55,8 @@ interface AppContextValue {
   themePreferenceSource: 'system' | 'saved';
   loading: boolean;
   errorMsg: string | null;
+  authError: string | null;
+  missingProfileInfo: { uid: string; email: string } | null;
   supabaseLive: boolean;
   setLang: (lang: Language) => void;
   toggleLang: () => void;
@@ -62,6 +64,8 @@ interface AppContextValue {
   toggleTheme: () => void;
   resetThemeToSystem: () => void;
   clearError: () => void;
+  clearAuthError: () => void;
+  retryProfileCheck: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   signInDemoRole: (role: UserRole) => void;
   signOut: () => Promise<void>;
@@ -202,6 +206,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   const [loading, setLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [missingProfileInfo, setMissingProfileInfo] = useState<{ uid: string; email: string } | null>(null);
+  const inFlightAuthRef = React.useRef<{ uid: string; promise: Promise<{ ok: boolean; error?: string }> } | null>(null);
 
   useEffect(() => {
     document.documentElement.lang = lang;
@@ -237,48 +244,89 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [db]);
 
-  const fetchLiveSupabaseData = async (uid: string) => {
-    if (!supabase) return;
-    setLoading(true);
-    try {
-      const [
-        profileRes,
-        profilesAllRes,
-        settingsRes,
-        eventTypesRes,
-        chargeCatsRes,
-        chargesRes,
-        bookingsRes,
-        itemsRes,
-        installmentsRes,
-        paymentsRes,
-        expCatsRes,
-        employeesRes,
-        attendanceRes,
-        advancesRes,
-        expensesRes,
-        auditRes,
-      ] = await Promise.all([
-        supabase.from('profiles').select('*').eq('id', uid).single(),
-        supabase.from('profiles').select('*').order('created_at', { ascending: false }),
-        supabase.from('hall_settings').select('*').eq('id', 1).single(),
-        supabase.from('event_types').select('*').order('name_en'),
-        supabase.from('charge_categories').select('*').order('sort_order'),
-        supabase.from('charges_catalog').select('*').order('name_en'),
-        supabase.from('bookings').select('*').order('event_date', { ascending: true }),
-        supabase.from('booking_items').select('*'),
-        supabase.from('installment_schedules').select('*').order('due_date'),
-        supabase.from('payments').select('*').order('payment_date', { ascending: false }),
-        supabase.from('expense_categories').select('*').order('name_en'),
-        supabase.from('employees').select('*').order('full_name'),
-        supabase.from('employee_attendance').select('*').order('attendance_date', { ascending: false }),
-        supabase.from('employee_advances').select('*').order('advance_date', { ascending: false }),
-        supabase.from('expenses').select('*').order('expense_date', { ascending: false }),
-        supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(200),
-      ]);
+  const fetchLiveSupabaseData = async (
+    uid: string,
+    authEmail?: string
+  ): Promise<{ ok: boolean; error?: string }> => {
+    if (!supabase) return { ok: false, error: 'Supabase client is not initialized.' };
+    if (inFlightAuthRef.current && inFlightAuthRef.current.uid === uid) {
+      return inFlightAuthRef.current.promise;
+    }
 
-      if (profileRes.data) {
-        const prof = profileRes.data as UserProfile;
+    const task = (async (): Promise<{ ok: boolean; error?: string }> => {
+      setLoading(true);
+      try {
+        const profileRes = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', uid)
+          .maybeSingle();
+
+        if (profileRes.error) {
+          const msg = `Unable to load your staff profile (${profileRes.error.message}).`;
+          console.warn('[Auth] Profile lookup error:', {
+            code: profileRes.error.code,
+            message: profileRes.error.message,
+          });
+          setMissingProfileInfo(null);
+          setCurrentUser(null);
+          setAuthError(msg);
+          return { ok: false, error: msg };
+        }
+
+        let profileRow = profileRes.data as UserProfile | null;
+
+        // If no profile row exists yet, attempt first-user super_admin bootstrap (allowed when profiles table is empty & policy is active)
+        if (!profileRow) {
+          const fallbackName = (authEmail || 'Super Admin').split('@')[0] || 'Super Admin';
+          const bootstrapRes = await supabase
+            .from('profiles')
+            .insert({
+              id: uid,
+              full_name: fallbackName,
+              email: authEmail || `${uid}@marquee1.pk`,
+              phone: '',
+              role: 'super_admin',
+              is_active: true,
+            })
+            .select('*')
+            .maybeSingle();
+
+          if (!bootstrapRes.error && bootstrapRes.data) {
+            profileRow = bootstrapRes.data as UserProfile;
+          }
+        }
+
+        if (!profileRow) {
+          const msg = `Signed in (${authEmail || uid}), but no profile/role row was found in public.profiles. Run the SQL snippet below in Supabase SQL Editor or ask your Super Admin to add your profile and role.`;
+          console.warn('[Auth] Missing profile/role row in public.profiles for authenticated user:', { uid });
+          setMissingProfileInfo({ uid, email: authEmail || '' });
+          setCurrentUser(null);
+          setAuthError(msg);
+          return { ok: false, error: msg };
+        }
+
+        const prof = profileRow;
+        if (!prof.role) {
+          const msg = `Signed in (${prof.email || authEmail || uid}), but your profile has no role assigned.`;
+          console.warn('[Auth] Missing role on profile:', { uid });
+          setMissingProfileInfo({ uid, email: prof.email || authEmail || '' });
+          setCurrentUser(null);
+          setAuthError(msg);
+          return { ok: false, error: msg };
+        }
+
+        if (!prof.is_active) {
+          const msg = 'Your staff profile is deactivated (is_active = false). Please contact Super Admin.';
+          console.warn('[Auth] Deactivated user profile:', { uid });
+          setMissingProfileInfo(null);
+          setCurrentUser(null);
+          setAuthError(msg);
+          return { ok: false, error: msg };
+        }
+
+        setMissingProfileInfo(null);
+        setAuthError(null);
         setCurrentUser(prof);
         if (prof.preferred_theme === 'light' || prof.preferred_theme === 'dark') {
           setThemeState(prof.preferred_theme);
@@ -289,45 +337,93 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             // ignore
           }
         }
+
+        const [
+          profilesAllRes,
+          settingsRes,
+          eventTypesRes,
+          chargeCatsRes,
+          chargesRes,
+          bookingsRes,
+          itemsRes,
+          installmentsRes,
+          paymentsRes,
+          expCatsRes,
+          employeesRes,
+          attendanceRes,
+          advancesRes,
+          expensesRes,
+          auditRes,
+        ] = await Promise.all([
+          supabase.from('profiles').select('*').order('created_at', { ascending: false }),
+          supabase.from('hall_settings').select('*').eq('id', 1).maybeSingle(),
+          supabase.from('event_types').select('*').order('name_en'),
+          supabase.from('charge_categories').select('*').order('sort_order'),
+          supabase.from('charges_catalog').select('*').order('name_en'),
+          supabase.from('bookings').select('*').order('event_date', { ascending: true }),
+          supabase.from('booking_items').select('*'),
+          supabase.from('installment_schedules').select('*').order('due_date'),
+          supabase.from('payments').select('*').order('payment_date', { ascending: false }),
+          supabase.from('expense_categories').select('*').order('name_en'),
+          supabase.from('employees').select('*').order('full_name'),
+          supabase.from('employee_attendance').select('*').order('attendance_date', { ascending: false }),
+          supabase.from('employee_advances').select('*').order('advance_date', { ascending: false }),
+          supabase.from('expenses').select('*').order('expense_date', { ascending: false }),
+          supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(200),
+        ]);
+
+        setDb((prev) => ({
+          ...prev,
+          profiles: (profilesAllRes.data as UserProfile[]) || prev.profiles,
+          settings: settingsRes.data
+            ? { ...prev.settings, ...(settingsRes.data as HallSettings) }
+            : prev.settings,
+          eventTypes: (eventTypesRes.data as EventTypeItem[]) || prev.eventTypes,
+          chargeCategories: (chargeCatsRes.data as ChargeCategory[]) || prev.chargeCategories,
+          chargesCatalog: (chargesRes.data as ChargeCatalogItem[]) || prev.chargesCatalog,
+          bookings: bookingsRes.data ? (bookingsRes.data as Booking[]).map(hydrateBooking) : prev.bookings,
+          bookingItems: (itemsRes.data as BookingItem[]) || prev.bookingItems,
+          installments: (installmentsRes.data as InstallmentSchedule[]) || prev.installments,
+          payments: (paymentsRes.data as Payment[]) || prev.payments,
+          expenseCategories: (expCatsRes.data as ExpenseCategory[]) || prev.expenseCategories,
+          employees: (employeesRes.data as Employee[]) || prev.employees,
+          attendance: (attendanceRes.data as EmployeeAttendance[]) || prev.attendance,
+          advances: (advancesRes.data as EmployeeAdvance[]) || prev.advances,
+          expenses: (expensesRes.data as Expense[]) || prev.expenses,
+          auditLogs: (auditRes.data as AuditLog[]) || prev.auditLogs,
+        }));
+        return { ok: true };
+      } catch (err: any) {
+        const msg = err?.message || 'Failed to sync with Supabase';
+        console.error('[Auth/Sync] Supabase sync error:', msg);
+        setErrorMsg(msg);
+        return { ok: false, error: msg };
+      } finally {
+        setLoading(false);
+        if (inFlightAuthRef.current?.uid === uid) {
+          inFlightAuthRef.current = null;
+        }
       }
-      setDb((prev) => ({
-        ...prev,
-        profiles: (profilesAllRes.data as UserProfile[]) || prev.profiles,
-        settings: settingsRes.data
-          ? { ...prev.settings, ...(settingsRes.data as HallSettings) }
-          : prev.settings,
-        eventTypes: (eventTypesRes.data as EventTypeItem[]) || prev.eventTypes,
-        chargeCategories: (chargeCatsRes.data as ChargeCategory[]) || prev.chargeCategories,
-        chargesCatalog: (chargesRes.data as ChargeCatalogItem[]) || prev.chargesCatalog,
-        bookings: bookingsRes.data ? (bookingsRes.data as Booking[]).map(hydrateBooking) : prev.bookings,
-        bookingItems: (itemsRes.data as BookingItem[]) || prev.bookingItems,
-        installments: (installmentsRes.data as InstallmentSchedule[]) || prev.installments,
-        payments: (paymentsRes.data as Payment[]) || prev.payments,
-        expenseCategories: (expCatsRes.data as ExpenseCategory[]) || prev.expenseCategories,
-        employees: (employeesRes.data as Employee[]) || prev.employees,
-        attendance: (attendanceRes.data as EmployeeAttendance[]) || prev.attendance,
-        advances: (advancesRes.data as EmployeeAdvance[]) || prev.advances,
-        expenses: (expensesRes.data as Expense[]) || prev.expenses,
-        auditLogs: (auditRes.data as AuditLog[]) || prev.auditLogs,
-      }));
-    } catch (err: any) {
-      setErrorMsg(err?.message || 'Failed to sync with Supabase');
-    } finally {
-      setLoading(false);
-    }
+    })();
+
+    inFlightAuthRef.current = { uid, promise: task };
+    return task;
   };
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (error) {
+        console.error('[Auth] Session restore error:', error.message);
+      }
       if (data.session?.user) {
-        fetchLiveSupabaseData(data.session.user.id);
+        fetchLiveSupabaseData(data.session.user.id, data.session.user.email);
       }
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        fetchLiveSupabaseData(session.user.id);
-      } else {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION')) {
+        fetchLiveSupabaseData(session.user.id, session.user.email);
+      } else if (event === 'SIGNED_OUT') {
         setCurrentUser(null);
       }
     });
@@ -337,6 +433,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setLang = (next: Language) => setLangState(next);
   const toggleLang = () => setLangState((prev) => (prev === 'en' ? 'ur' : 'en'));
   const clearError = () => setErrorMsg(null);
+  const clearAuthError = () => {
+    setAuthError(null);
+    setMissingProfileInfo(null);
+  };
+
+  const retryProfileCheck = async () => {
+    if (!isSupabaseConfigured || !supabase) return;
+    const { data } = await supabase.auth.getSession();
+    if (data.session?.user) {
+      await fetchLiveSupabaseData(data.session.user.id, data.session.user.email);
+    }
+  };
 
   const persistUserTheme = (nextTheme: ThemeMode | null) => {
     if (!currentUser) return;
@@ -410,19 +518,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const signInWithEmail = async (email: string, password: string) => {
+    setAuthError(null);
+    setMissingProfileInfo(null);
     if (isSupabaseConfigured && supabase) {
       setLoading(true);
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      setLoading(false);
-      if (error) return { ok: false, error: error.message };
-      if (data.user) {
-        await fetchLiveSupabaseData(data.user.id);
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
+        if (error) {
+          console.warn('[Auth] Supabase sign-in failed:', {
+            status: error.status,
+            code: (error as { code?: string }).code,
+            message: error.message,
+          });
+          setAuthError(error.message);
+          return { ok: false, error: error.message };
+        }
+        if (data.user) {
+          const syncRes = await fetchLiveSupabaseData(data.user.id, data.user.email);
+          if (!syncRes.ok) {
+            return { ok: false, error: syncRes.error };
+          }
+        } else {
+          const msg = 'Sign-in did not return an authenticated user session.';
+          console.warn('[Auth] Missing user object after signInWithPassword');
+          setAuthError(msg);
+          return { ok: false, error: msg };
+        }
+        return { ok: true };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Unexpected sign-in error.';
+        console.warn('[Auth] Supabase sign-in exception:', msg);
+        setAuthError(msg);
+        return { ok: false, error: msg };
+      } finally {
+        setLoading(false);
       }
-      return { ok: true };
     }
     const matched = db.profiles.find((p) => p.email.toLowerCase() === email.trim().toLowerCase() && p.is_active);
     if (!matched) {
-      return { ok: false, error: 'Account not found or inactive. Use quick role login below.' };
+      const msg = 'Account not found or inactive. Use quick role login below.';
+      setAuthError(msg);
+      return { ok: false, error: msg };
     }
     setCurrentUser(matched);
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(matched));
@@ -435,6 +574,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const signInDemoRole = (role: UserRole) => {
+    setAuthError(null);
+    setMissingProfileInfo(null);
     const matched = db.profiles.find((p) => p.role === role && p.is_active) || db.profiles[0];
     setCurrentUser(matched);
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(matched));
@@ -446,6 +587,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const signOut = async () => {
+    setAuthError(null);
+    setMissingProfileInfo(null);
     if (isSupabaseConfigured && supabase) {
       await supabase.auth.signOut();
     }
@@ -1198,6 +1341,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         themePreferenceSource,
         loading,
         errorMsg,
+        authError,
+        missingProfileInfo,
         supabaseLive: isSupabaseConfigured,
         setLang,
         toggleLang,
@@ -1205,6 +1350,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleTheme,
         resetThemeToSystem,
         clearError,
+        clearAuthError,
+        retryProfileCheck,
         signInWithEmail,
         signInDemoRole,
         signOut,

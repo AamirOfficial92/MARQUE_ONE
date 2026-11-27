@@ -34,18 +34,18 @@ A production-quality, bilingual (**English & Urdu RTL** with `Noto Nastaliq Urdu
 ```bash
 npm install
 cp .env.example .env
-# Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY from Supabase Settings -> API
+# Add VITE_SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL) and VITE_SUPABASE_ANON_KEY / VITE_SUPABASE_PUBLISHABLE_KEY (or NEXT_PUBLIC_* equivalents)
 npm run dev
 ```
-> **Note:** If `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are left unset, the application runs in local browser preview mode with pre-seeded data persisted in `localStorage` so every screen and role can be evaluated immediately.
+> **Note:** If Supabase URL or key are left unset, the login screen displays `"Supabase environment variables are missing"` and runs in local browser preview mode with pre-seeded data persisted in `localStorage`.
 
 ### 3. Deploy to Vercel from GitHub
 1. Push this repository to GitHub.
 2. Import the repository in [vercel.com](https://vercel.com).
 3. Add Environment Variables in Vercel Project Settings:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-   - *(Optional)* `RESEND_API_KEY` and `RESEND_FROM_EMAIL` for direct server-side invoice emails via `/api/send-email`.
+   - `VITE_SUPABASE_URL` (or `NEXT_PUBLIC_SUPABASE_URL`)
+   - `VITE_SUPABASE_ANON_KEY` (or `VITE_SUPABASE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`)
+   - *(Optional)* `RESEND_API_KEY` and `RESEND_FROM_EMAIL` for direct server-side invoice emails via `/api/send-email` (the app works completely without them, falling back to `mailto:`).
 4. Click **Deploy** (Build Command: `npm run build`, Output Directory: `dist`).
 
 ### 4. Google Sheets Sync (Optional)

@@ -1,19 +1,53 @@
 import React, { useState } from 'react';
-import { Globe, KeyRound, Lock, Mail, Moon, ShieldCheck, Sun, Users, Wallet } from 'lucide-react';
+import { AlertTriangle, Check, Copy, Globe, KeyRound, Lock, LogOut, Mail, Moon, RefreshCw, ShieldCheck, Sun, Users, Wallet } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { HALL_LOGO_SRC } from '../data/seedData';
 import { tr } from '../i18n/translations';
+import { supabaseEnvStatus } from '../lib/supabase';
 import { UserRole } from '../types';
 
 export const AuthScreen: React.FC = () => {
-  const { lang, toggleLang, theme, toggleTheme, signInWithEmail, signInDemoRole, supabaseLive, loading } = useApp();
+  const {
+    lang,
+    toggleLang,
+    theme,
+    toggleTheme,
+    signInWithEmail,
+    signInDemoRole,
+    signOut,
+    retryProfileCheck,
+    supabaseLive,
+    authError,
+    missingProfileInfo,
+    clearAuthError,
+    loading,
+  } = useApp();
   const [email, setEmail] = useState('admin@marquee1.pk');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [copiedSql, setCopiedSql] = useState(false);
+
+  const visibleError = authError || error;
+
+  const missingProfileSql = missingProfileInfo
+    ? `INSERT INTO public.profiles (id, full_name, email, phone, role, is_active)\nVALUES ('${missingProfileInfo.uid}', '${(missingProfileInfo.email.split('@')[0] || 'Super Admin').replace(/'/g, "''")}', '${missingProfileInfo.email.replace(/'/g, "''")}', '', 'super_admin', true)\nON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role, is_active = true;`
+    : '';
+
+  const handleCopySql = async () => {
+    if (!missingProfileSql) return;
+    try {
+      await navigator.clipboard.writeText(missingProfileSql);
+      setCopiedSql(true);
+      setTimeout(() => setCopiedSql(false), 2000);
+    } catch {
+      // clipboard fallback ignored
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    clearAuthError();
     const res = await signInWithEmail(email, password);
     if (!res.ok) {
       setError(res.error || 'Sign in failed');
@@ -96,15 +130,77 @@ export const AuthScreen: React.FC = () => {
         </div>
 
         <h2 className="text-lg font-semibold text-slate-100 mb-1">{tr('loginTitle', lang)}</h2>
-        <p className="text-xs text-slate-400 mb-5">
+        <p className="text-xs text-slate-400 mb-4">
           {supabaseLive
             ? 'Sign in with your Supabase Auth staff credentials.'
-            : 'Preview Mode active (connect VITE_SUPABASE_URL & VITE_SUPABASE_ANON_KEY for live database).'}
+            : 'Local Preview Mode is active below so you can still evaluate roles offline.'}
         </p>
 
-        {error && (
-          <div className="mb-4 p-3 rounded-xl border border-rose-500/40 bg-rose-500/10 text-rose-200 text-xs">
-            {error}
+        {supabaseEnvStatus.isMissing && (
+          <div
+            role="alert"
+            className="mb-4 p-3.5 rounded-xl border border-amber-500/45 bg-amber-500/10 text-xs space-y-1.5"
+          >
+            <div className="flex items-center gap-2 font-semibold text-amber-300">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>Supabase environment variables are missing</span>
+            </div>
+            <p className="text-slate-300 leading-relaxed">
+              {!supabaseEnvStatus.hasUrl && !supabaseEnvStatus.hasKey
+                ? 'Both Supabase URL and API key are missing or set to placeholder values.'
+                : !supabaseEnvStatus.hasUrl
+                  ? 'Supabase URL is missing (set VITE_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL).'
+                  : 'Supabase key is missing (set VITE_SUPABASE_ANON_KEY, VITE_SUPABASE_PUBLISHABLE_KEY, NEXT_PUBLIC_SUPABASE_ANON_KEY, or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY).'}
+            </p>
+          </div>
+        )}
+
+        {visibleError && (
+          <div
+            role="alert"
+            className="mb-4 p-3.5 rounded-xl border border-rose-500/50 bg-rose-500/10 text-rose-200 text-xs leading-relaxed space-y-2.5"
+          >
+            <div>
+              <div className="font-semibold text-rose-300 mb-0.5">
+                {missingProfileInfo ? 'Profile setup required in Supabase' : 'Sign-in error'}
+              </div>
+              <div>{visibleError}</div>
+            </div>
+
+            {missingProfileInfo && (
+              <div className="space-y-2 pt-1 border-t border-rose-500/25">
+                <pre className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 text-[11px] text-cyan-300 overflow-x-auto select-all whitespace-pre-wrap break-all tabular-nums">
+                  {missingProfileSql}
+                </pre>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCopySql}
+                    className="px-2.5 py-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/15 text-cyan-200 text-[11px] font-semibold flex items-center gap-1.5"
+                  >
+                    {copiedSql ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedSql ? 'SQL Copied!' : 'Copy SQL Fix'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => retryProfileCheck()}
+                    disabled={loading}
+                    className="px-2.5 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/15 text-emerald-200 text-[11px] font-semibold flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+                    <span>Retry Login Check</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => signOut()}
+                    className="px-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-900/80 text-slate-300 text-[11px] font-medium flex items-center gap-1"
+                  >
+                    <LogOut className="w-3 h-3" />
+                    <span>Sign Out</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -117,7 +213,13 @@ export const AuthScreen: React.FC = () => {
                 type="email"
                 required
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (visibleError) {
+                    setError(null);
+                    clearAuthError();
+                  }
+                }}
                 className="w-full bg-slate-950/70 border border-slate-800 rounded-xl py-2.5 pl-10 pr-3 rtl:pl-3 rtl:pr-10 text-sm text-slate-100 focus:outline-none focus:border-cyan-500"
                 placeholder="admin@marquee1.pk"
               />
@@ -132,7 +234,13 @@ export const AuthScreen: React.FC = () => {
                 type="password"
                 required={supabaseLive}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (visibleError) {
+                    setError(null);
+                    clearAuthError();
+                  }
+                }}
                 className="w-full bg-slate-950/70 border border-slate-800 rounded-xl py-2.5 pl-10 pr-3 rtl:pl-3 rtl:pr-10 text-sm text-slate-100 focus:outline-none focus:border-cyan-500"
                 placeholder={supabaseLive ? '••••••••' : 'Optional in Preview Mode'}
               />

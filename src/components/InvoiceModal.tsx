@@ -65,8 +65,11 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({ booking, onClose }) 
         }),
       });
       if (resp.ok) {
-        setEmailStatus(`Sent via Resend to ${targetEmail}`);
-        return;
+        const result = await resp.json().catch(() => ({}));
+        if (result?.ok) {
+          setEmailStatus(`Sent via Resend to ${targetEmail}`);
+          return;
+        }
       }
     } catch {
       // Fallback to mailto

@@ -457,9 +457,54 @@ ALTER TABLE public.employee_advances ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
+CREATE OR REPLACE FUNCTION public.profiles_is_empty()
+RETURNS BOOLEAN AS $$
+  SELECT NOT EXISTS (SELECT 1 FROM public.profiles);
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public;
+
+-- Auto-create profile row when a Supabase Auth user is created (first user becomes super_admin)
+CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
+RETURNS TRIGGER AS $$
+DECLARE
+  assigned_role public.user_role;
+BEGIN
+  IF public.profiles_is_empty() THEN
+    assigned_role := 'super_admin';
+  ELSE
+    assigned_role := COALESCE(
+      NULLIF(NEW.raw_user_meta_data->>'role', '')::public.user_role,
+      'management'::public.user_role
+    );
+  END IF;
+
+  INSERT INTO public.profiles (id, full_name, email, phone, role, is_active)
+  VALUES (
+    NEW.id,
+    COALESCE(NULLIF(NEW.raw_user_meta_data->>'full_name', ''), split_part(COALESCE(NEW.email, 'Staff'), '@', 1)),
+    COALESCE(NEW.email, NEW.id::TEXT || '@marquee1.pk'),
+    COALESCE(NEW.raw_user_meta_data->>'phone', ''),
+    assigned_role,
+    true
+  )
+  ON CONFLICT (id) DO NOTHING;
+
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_new_auth_user();
+
 -- Profiles
 CREATE POLICY "Users can read own profile" ON public.profiles
   FOR SELECT USING (auth.uid() = id OR public.current_user_role() = 'super_admin');
+CREATE POLICY "First user can bootstrap super_admin profile" ON public.profiles
+  FOR INSERT WITH CHECK (auth.uid() = id AND role = 'super_admin' AND public.profiles_is_empty());
 CREATE POLICY "Users can update own theme preference" ON public.profiles
   FOR UPDATE USING (auth.uid() = id)
   WITH CHECK (auth.uid() = id AND role = public.current_user_role() AND is_active = true);
@@ -569,8 +614,26 @@ CREATE POLICY "Authenticated inserts audit logs" ON public.audit_logs
   FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 
 -- ============================================================================
--- 6. SEED DATA
+-- 6. SEED DATA & AUTH USER BACKFILL
 -- ============================================================================
+
+-- Backfill profiles for any existing auth.users without a profile row (first user gets super_admin)
+INSERT INTO public.profiles (id, full_name, email, phone, role, is_active)
+SELECT
+  u.id,
+  COALESCE(NULLIF(u.raw_user_meta_data->>'full_name', ''), split_part(COALESCE(u.email, 'Admin'), '@', 1)),
+  COALESCE(u.email, u.id::TEXT || '@marquee1.pk'),
+  COALESCE(u.raw_user_meta_data->>'phone', ''),
+  CASE
+    WHEN public.profiles_is_empty()
+      AND u.id = (SELECT id FROM auth.users ORDER BY created_at ASC LIMIT 1)
+    THEN 'super_admin'::public.user_role
+    ELSE 'management'::public.user_role
+  END,
+  true
+FROM auth.users u
+WHERE NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = u.id)
+ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.hall_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
