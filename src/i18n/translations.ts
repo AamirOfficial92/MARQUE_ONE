@@ -7,14 +7,22 @@ export const TRANSLATIONS = {
     dashboard: 'Dashboard',
     calendar: 'Floor Calendar',
     bookings: 'Bookings',
-    payments: 'Payments & Invoices',
-    expenses: 'Expenses & Staff',
+    customers: 'Customers',
+    payments: 'Payments & Receipts',
+    invoices: 'Invoices',
+    dailyClosing: 'Daily Closing',
+    catalog: 'Services & Charges Catalog',
+    approvals: 'Approvals',
+    expenses: 'Expenses',
+    employees: 'Employees',
+    attendance: 'Attendance',
+    salaries: 'Salaries & Advances',
     reports: 'Reports',
     reminders: 'Reminders',
-    importData: 'Import Sheets',
+    importData: 'Backup & Import',
     recycleBin: 'Recycle Bin',
     auditLog: 'Audit Log',
-    users: 'Users & Roles',
+    users: 'Users',
     settings: 'Settings',
     more: 'More',
     searchPlaceholder: 'Search booking code, customer, phone, NIC, or date...',
@@ -54,6 +62,7 @@ export const TRANSLATIONS = {
     guests: 'Guests',
     hallRent: 'Hall Rent (PKR)',
     notes: 'Notes',
+    inspectionNotes: 'Hall Inspection Notes',
     cratesTitle: 'Cold Drink Crates & Return Reversal',
     cratesOrdered: 'Crates Ordered',
     cratesUsed: 'Crates Used',
@@ -85,6 +94,8 @@ export const TRANSLATIONS = {
     lightMode: 'Light Mode',
     systemDefault: 'System Default',
     appearance: 'Appearance & Theme',
+    activeHall: 'Active Hall',
+    allHalls: 'All Halls',
   },
   ur: {
     appTitle: 'مارکی 1',
@@ -92,14 +103,22 @@ export const TRANSLATIONS = {
     dashboard: 'ڈیش بورڈ',
     calendar: 'فلور کیلنڈر',
     bookings: 'بکنگز',
-    payments: 'ادائیگیاں اور بل',
-    expenses: 'اخراجات اور عملہ',
+    customers: 'گاہک',
+    payments: 'ادائیگیاں اور رسیدیں',
+    invoices: 'انوائسز',
+    dailyClosing: 'روزانہ کیش کلوزنگ',
+    catalog: 'سروسز و چارجز کیٹلاگ',
+    approvals: 'منظوریاں',
+    expenses: 'اخراجات',
+    employees: 'ملازمین',
+    attendance: 'حاضری',
+    salaries: 'تنخواہیں اور ایڈوانس',
     reports: 'مالی رپورٹس',
     reminders: 'یاددہانیاں',
-    importData: 'شیٹ امپورٹ',
+    importData: 'بیک اپ اور امپورٹ',
     recycleBin: 'ری سائیکل بن',
     auditLog: 'آڈٹ لاگ',
-    users: 'صارفین اور اختیارات',
+    users: 'صارفین',
     settings: 'سیٹنگز',
     more: 'مزید',
     searchPlaceholder: 'بکنگ کوڈ، نام، فون، شناختی کارڈ یا تاریخ سے تلاش کریں...',
@@ -139,6 +158,7 @@ export const TRANSLATIONS = {
     guests: 'مہمانوں کی تعداد',
     hallRent: 'ہال کرایہ (روپے)',
     notes: 'مزید تفصیلات',
+    inspectionNotes: 'ہال معائنہ نوٹس',
     cratesTitle: 'کولڈ ڈرنک کریٹس اور واپسی ایڈجسٹمنٹ',
     cratesOrdered: 'آرڈر کردہ کریٹس',
     cratesUsed: 'استعمال شدہ کریٹس',
@@ -170,6 +190,8 @@ export const TRANSLATIONS = {
     lightMode: 'لائٹ موڈ',
     systemDefault: 'سسٹم ڈیفالٹ',
     appearance: 'ظاہری شکل اور تھیم',
+    activeHall: 'فعال ہال',
+    allHalls: 'تمام ہالز',
   },
 } as const;
 
@@ -208,5 +230,30 @@ export function translateStatus(status: string, lang: Language): string {
       return 'منسوخ';
     default:
       return status;
+  }
+}
+
+export function translateRole(role: string, lang: Language): string {
+  if (lang === 'ur') {
+    switch (role) {
+      case 'super_admin':
+        return 'سپر ایڈمن';
+      case 'admin':
+        return 'ہال ایڈمن';
+      case 'manager':
+        return 'ہال مینیجر';
+      default:
+        return role;
+    }
+  }
+  switch (role) {
+    case 'super_admin':
+      return 'Super Admin';
+    case 'admin':
+      return 'Hall Admin';
+    case 'manager':
+      return 'Hall Manager';
+    default:
+      return role;
   }
 }

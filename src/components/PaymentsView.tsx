@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, FileText, Plus, Printer, Trash2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { tr } from '../i18n/translations';
@@ -12,7 +12,10 @@ interface PaymentsViewProps {
 }
 
 export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, onOpenInvoice }) => {
-  const { db, lang, currentUser, addPayment, softDeletePayment, toggleInstallmentPaid } = useApp();
+  const { db, lang, currentUser, can, addPayment, softDeletePayment, toggleInstallmentPaid } = useApp();
+  const canEdit = can('payments', 'edit');
+  const canDelete = can('payments', 'delete');
+  const canViewInvoices = can('invoices', 'view');
 
   const activeBookings = useMemo(
     () => db.bookings.filter((b) => !b.deleted_at && b.status !== 'Cancelled'),
@@ -22,6 +25,14 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
   const [selectedBookingId, setSelectedBookingId] = useState<string>(
     initialBookingId || activeBookings[0]?.id || ''
   );
+
+  useEffect(() => {
+    if (initialBookingId && activeBookings.some((b) => b.id === initialBookingId)) {
+      setSelectedBookingId(initialBookingId);
+    } else if (activeBookings.length > 0 && !activeBookings.some((b) => b.id === selectedBookingId)) {
+      setSelectedBookingId(activeBookings[0].id);
+    }
+  }, [initialBookingId, activeBookings, selectedBookingId]);
 
   const [amount, setAmount] = useState<string>('');
   const [paymentDate, setPaymentDate] = useState<string>(todayISO());
@@ -103,7 +114,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
             </select>
           </div>
 
-          {selectedBooking && (
+          {selectedBooking && canViewInvoices && (
             <button
               type="button"
               onClick={() => onOpenInvoice(selectedBooking)}
@@ -146,9 +157,10 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
       </div>
 
       {/* Record Payment + Installment Schedule */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <form onSubmit={handleRecordPayment} className="glass-panel rounded-2xl p-5 space-y-4">
-          <h3 className="text-sm font-bold text-white">Record Advance / Installment</h3>
+      <div className={`grid grid-cols-1 ${canEdit ? 'xl:grid-cols-3' : ''} gap-6`}>
+        {canEdit && (
+          <form onSubmit={handleRecordPayment} className="glass-panel rounded-2xl p-5 space-y-4">
+            <h3 className="text-sm font-bold text-white">Record Advance / Installment</h3>
           {formMsg && (
             <div className="p-2.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 text-cyan-200 text-xs">
               {formMsg}
@@ -234,9 +246,10 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
             <span>Record Payment & Generate Receipt</span>
           </button>
         </form>
+        )}
 
         {/* Payment History + Planned Installments */}
-        <div className="xl:col-span-2 space-y-6">
+        <div className={`${canEdit ? 'xl:col-span-2' : ''} space-y-6`}>
           {bookingInstallments.length > 0 && (
             <div className="glass-panel rounded-2xl p-5">
               <h3 className="text-sm font-bold text-white mb-3">Planned Installment Schedule</h3>
@@ -251,8 +264,9 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
                       <span className="font-bold text-cyan-300 tabular-nums">{formatPKR(ins.amount)}</span>
                       <button
                         type="button"
+                        disabled={!canEdit}
                         onClick={() => toggleInstallmentPaid(ins.id, !ins.is_paid)}
-                        className={`px-2.5 py-1 rounded-lg border text-xs font-medium flex items-center gap-1 ${
+                        className={`px-2.5 py-1 rounded-lg border text-xs font-medium flex items-center gap-1 disabled:opacity-60 disabled:cursor-not-allowed ${
                           ins.is_paid
                             ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
                             : 'border-slate-700 bg-slate-900 text-slate-300 hover:border-cyan-500/40'
@@ -316,14 +330,16 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
                               <Printer className="w-3.5 h-3.5" />
                             </button>
                           )}
-                          <button
-                            type="button"
-                            onClick={() => softDeletePayment(p.id)}
-                            title={tr('delete', lang)}
-                            className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-rose-400"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {canDelete && (
+                            <button
+                              type="button"
+                              onClick={() => softDeletePayment(p.id)}
+                              title={tr('delete', lang)}
+                              className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-rose-400"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

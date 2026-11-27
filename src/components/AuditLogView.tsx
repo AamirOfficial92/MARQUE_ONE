@@ -66,13 +66,51 @@ export const AuditLogView: React.FC = () => {
                     <div className="font-semibold text-white">{log.actor_name}</div>
                     <div className="text-[11px] text-amber-300 capitalize">{log.actor_role.replace('_', ' ')}</div>
                   </td>
-                  <td className="py-3 px-4 font-semibold text-cyan-300">{log.action}</td>
+                  <td className="py-3 px-4 font-semibold">
+                    <span
+                      className={
+                        log.action === 'PERMISSIONS'
+                          ? 'text-amber-300'
+                          : log.action === 'DELETE'
+                          ? 'text-rose-400'
+                          : 'text-cyan-300'
+                      }
+                    >
+                      {log.action}
+                    </span>
+                  </td>
                   <td className="py-3 px-4">
                     <div className="text-white font-medium">{log.entity_label}</div>
                     <div className="text-[11px] text-slate-500">{log.entity_type}</div>
                   </td>
-                  <td className="py-3 px-4 font-mono text-[11px] text-slate-300 max-w-md break-words">
-                    {JSON.stringify(log.changes)}
+                  <td className="py-3 px-4 text-[11px] text-slate-300 max-w-md break-words">
+                    {log.action === 'PERMISSIONS' &&
+                    Array.isArray((log.changes as { changed_screens?: unknown[] })?.changed_screens) ? (
+                      <div className="space-y-1">
+                        {(
+                          (log.changes as {
+                            changed_screens: Array<{
+                              screen_key: string;
+                              before: { view: boolean; edit: boolean; delete: boolean };
+                              after: { view: boolean; edit: boolean; delete: boolean };
+                            }>;
+                          }).changed_screens || []
+                        ).map((diff) => (
+                          <div key={diff.screen_key} className="font-mono text-[10px] text-slate-300">
+                            <span className="text-cyan-300 font-semibold">{diff.screen_key}</span>:{' '}
+                            <span className="text-slate-400">
+                              [V:{diff.before.view ? '1' : '0'} E:{diff.before.edit ? '1' : '0'} D:{diff.before.delete ? '1' : '0'}]
+                            </span>
+                            {' → '}
+                            <span className="text-emerald-300">
+                              [V:{diff.after.view ? '1' : '0'} E:{diff.after.edit ? '1' : '0'} D:{diff.after.delete ? '1' : '0'}]
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="font-mono">{JSON.stringify(log.changes)}</span>
+                    )}
                   </td>
                 </tr>
               ))}

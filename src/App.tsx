@@ -1,15 +1,19 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
+import { ApprovalsView } from './components/ApprovalsView';
 import { AuthScreen } from './components/AuthScreen';
 import { AuditLogView } from './components/AuditLogView';
 import { BookingModal } from './components/BookingModal';
 import { BookingsView } from './components/BookingsView';
 import { CalendarView } from './components/CalendarView';
+import { CustomersView } from './components/CustomersView';
+import { DailyClosingView } from './components/DailyClosingView';
 import { DashboardView } from './components/DashboardView';
 import { ExpensesView } from './components/ExpensesView';
 import { ImportView } from './components/ImportView';
 import { InvoiceModal } from './components/InvoiceModal';
-import { Layout, NavTabId } from './components/Layout';
+import { InvoicesView } from './components/InvoicesView';
+import { Layout, NavTabId, TAB_TO_SCREEN_KEY } from './components/Layout';
 import { PaymentsView } from './components/PaymentsView';
 import { RecycleBinView } from './components/RecycleBinView';
 import { RemindersView } from './components/RemindersView';
@@ -18,31 +22,75 @@ import { SettingsView } from './components/SettingsView';
 import { UsersView } from './components/UsersView';
 import { Booking } from './types';
 
+const TAB_ORDER: NavTabId[] = [
+  'dashboard',
+  'calendar',
+  'bookings',
+  'approvals',
+  'customers',
+  'payments',
+  'invoices',
+  'closing',
+  'catalog',
+  'expenses',
+  'employees',
+  'attendance',
+  'salaries',
+  'reports',
+  'reminders',
+  'import',
+  'recycle',
+  'audit',
+  'users',
+  'settings',
+];
+
 const MainShell: React.FC = () => {
-  const { currentUser, errorMsg, clearError, loading } = useApp();
+  const { currentUser, can, errorMsg, clearError, loading } = useApp();
   const [activeTab, setActiveTab] = useState<NavTabId>('dashboard');
   const [editingBooking, setEditingBooking] = useState<Booking | null | undefined>(undefined);
   const [newBookingInitialDate, setNewBookingInitialDate] = useState<string | undefined>(undefined);
   const [invoiceBooking, setInvoiceBooking] = useState<Booking | null>(null);
   const [paymentBookingId, setPaymentBookingId] = useState<string | null>(null);
 
+  const firstPermittedTab = useMemo<NavTabId | null>(() => {
+    if (!currentUser) return null;
+    for (const tab of TAB_ORDER) {
+      if (can(TAB_TO_SCREEN_KEY[tab], 'view')) return tab;
+    }
+    return null;
+  }, [currentUser, can]);
+
+  useEffect(() => {
+    if (!currentUser || !firstPermittedTab) return;
+    if (!can(TAB_TO_SCREEN_KEY[activeTab], 'view')) {
+      setActiveTab(firstPermittedTab);
+    }
+  }, [currentUser, activeTab, can, firstPermittedTab]);
+
   if (!currentUser) {
     return <AuthScreen />;
   }
 
   const openNewBooking = (dateISO?: string) => {
+    if (!can('bookings', 'edit')) return;
     setNewBookingInitialDate(dateISO);
     setEditingBooking(null);
   };
 
   const openExistingBooking = (bk: Booking) => {
+    if (!can('bookings', 'view') && !can('calendar', 'view') && !can('dashboard', 'view')) return;
     setNewBookingInitialDate(undefined);
     setEditingBooking(bk);
   };
 
+  const safeTab: NavTabId | null = can(TAB_TO_SCREEN_KEY[activeTab], 'view')
+    ? activeTab
+    : firstPermittedTab;
+
   return (
     <Layout
-      activeTab={activeTab}
+      activeTab={safeTab || 'dashboard'}
       onSelectTab={setActiveTab}
       onNewBooking={() => openNewBooking()}
       onOpenBookingFromSearch={(bk) => openExistingBooking(bk)}
@@ -62,7 +110,16 @@ const MainShell: React.FC = () => {
         </div>
       )}
 
-      {activeTab === 'dashboard' && (
+      {!safeTab && (
+        <div className="glass-panel rounded-2xl p-8 text-center space-y-2">
+          <div className="text-base font-bold text-white">No Screens Assigned</div>
+          <p className="text-xs text-slate-400">
+            Your account does not currently have View permission for any screens. Please ask your Super Admin or Hall Admin to grant access.
+          </p>
+        </div>
+      )}
+
+      {safeTab === 'dashboard' && (
         <DashboardView
           onOpenBooking={openExistingBooking}
           onOpenInvoice={(bk) => setInvoiceBooking(bk)}
@@ -70,14 +127,14 @@ const MainShell: React.FC = () => {
         />
       )}
 
-      {activeTab === 'calendar' && (
+      {safeTab === 'calendar' && (
         <CalendarView
           onSelectBooking={openExistingBooking}
           onCreateOnDate={(iso) => openNewBooking(iso)}
         />
       )}
 
-      {activeTab === 'bookings' && (
+      {safeTab === 'bookings' && (
         <BookingsView
           onNewBooking={() => openNewBooking()}
           onEditBooking={openExistingBooking}
@@ -89,21 +146,33 @@ const MainShell: React.FC = () => {
         />
       )}
 
-      {activeTab === 'payments' && (
+      {safeTab === 'customers' && <CustomersView />}
+
+      {safeTab === 'payments' && (
         <PaymentsView
           initialBookingId={paymentBookingId}
           onOpenInvoice={(bk) => setInvoiceBooking(bk)}
         />
       )}
 
-      {activeTab === 'expenses' && <ExpensesView />}
-      {activeTab === 'reports' && <ReportsView />}
-      {activeTab === 'reminders' && <RemindersView />}
-      {activeTab === 'import' && <ImportView />}
-      {activeTab === 'recycle' && <RecycleBinView />}
-      {activeTab === 'audit' && <AuditLogView />}
-      {activeTab === 'users' && <UsersView />}
-      {activeTab === 'settings' && <SettingsView />}
+      {safeTab === 'invoices' && (
+        <InvoicesView onOpenInvoice={(bk) => setInvoiceBooking(bk)} />
+      )}
+
+      {safeTab === 'closing' && <DailyClosingView />}
+      {safeTab === 'approvals' && <ApprovalsView />}
+      {safeTab === 'catalog' && <SettingsView key="catalog" initialTab="catalog" catalogOnly />}
+      {safeTab === 'expenses' && <ExpensesView key="expenses" initialSubTab="expenses" />}
+      {safeTab === 'employees' && <ExpensesView key="employees" initialSubTab="staff" />}
+      {safeTab === 'attendance' && <ExpensesView key="attendance" initialSubTab="attendance" />}
+      {safeTab === 'salaries' && <ExpensesView key="salaries" initialSubTab="payroll" />}
+      {safeTab === 'reports' && <ReportsView />}
+      {safeTab === 'reminders' && <RemindersView />}
+      {safeTab === 'import' && <ImportView />}
+      {safeTab === 'recycle' && <RecycleBinView />}
+      {safeTab === 'audit' && <AuditLogView />}
+      {safeTab === 'users' && <UsersView />}
+      {safeTab === 'settings' && <SettingsView key="settings" />}
 
       {editingBooking !== undefined && (
         <BookingModal

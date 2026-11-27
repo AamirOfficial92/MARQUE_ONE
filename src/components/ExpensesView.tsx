@@ -7,10 +7,19 @@ import { formatDateDisplay, formatNICInput, formatPKR, formatPakistaniPhoneInput
 
 type ExpenseSubTab = 'expenses' | 'staff' | 'attendance' | 'payroll' | 'categories';
 
-export const ExpensesView: React.FC = () => {
+interface ExpensesViewProps {
+  attendanceOnly?: boolean;
+  initialSubTab?: ExpenseSubTab;
+}
+
+export const ExpensesView: React.FC<ExpensesViewProps> = ({
+  attendanceOnly = false,
+  initialSubTab,
+}) => {
   const {
     db,
     lang,
+    can,
     addExpense,
     softDeleteExpense,
     saveEmployee,
@@ -22,7 +31,40 @@ export const ExpensesView: React.FC = () => {
     saveExpenseCategory,
   } = useApp();
 
-  const [subTab, setSubTab] = useState<ExpenseSubTab>('expenses');
+  const canViewExpenses = can('expenses', 'view');
+  const canEditExpenses = can('expenses', 'edit');
+  const canDeleteExpenses = can('expenses', 'delete');
+  const canViewEmployees = can('employees', 'view');
+  const canEditEmployees = can('employees', 'edit');
+  const canDeleteEmployees = can('employees', 'delete');
+  const canViewAttendance = can('attendance', 'view');
+  const canEditAttendance = can('attendance', 'edit');
+  const canViewSalaries = can('salaries', 'view');
+  const canEditSalaries = can('salaries', 'edit');
+
+  const visibleSubTabs = useMemo(() => {
+    const tabs: Array<{ id: ExpenseSubTab; label: string }> = [];
+    if (attendanceOnly) {
+      if (canViewAttendance) tabs.push({ id: 'attendance', label: 'Attendance' });
+      return tabs;
+    }
+    if (canViewExpenses) tabs.push({ id: 'expenses', label: 'Expenses Ledger' });
+    if (canViewEmployees) tabs.push({ id: 'staff', label: 'Employees' });
+    if (canViewAttendance) tabs.push({ id: 'attendance', label: 'Attendance' });
+    if (canViewSalaries) tabs.push({ id: 'payroll', label: 'Advances & Salary Sheet' });
+    if (canViewExpenses) tabs.push({ id: 'categories', label: 'Categories' });
+    return tabs;
+  }, [attendanceOnly, canViewExpenses, canViewEmployees, canViewAttendance, canViewSalaries]);
+
+  const defaultTab: ExpenseSubTab =
+    initialSubTab && visibleSubTabs.some((t) => t.id === initialSubTab)
+      ? initialSubTab
+      : visibleSubTabs[0]?.id || 'attendance';
+
+  const [subTab, setSubTab] = useState<ExpenseSubTab>(defaultTab);
+  const activeSubTab: ExpenseSubTab = visibleSubTabs.some((t) => t.id === subTab)
+    ? subTab
+    : defaultTab;
   const today = todayISO();
 
   // New Expense Form
@@ -236,35 +278,30 @@ export const ExpensesView: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Sub-navigation tabs */}
-      <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-slate-900/90 border border-slate-800 w-fit">
-        {(
-          [
-            { id: 'expenses', label: 'Expenses Ledger' },
-            { id: 'staff', label: 'Employees' },
-            { id: 'attendance', label: 'Attendance' },
-            { id: 'payroll', label: 'Advances & Salary Sheet' },
-            { id: 'categories', label: 'Categories' },
-          ] as Array<{ id: ExpenseSubTab; label: string }>
-        ).map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setSubTab(tab.id)}
-            className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
-              subTab === tab.id
-                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
-                : 'text-slate-400 hover:text-slate-200 border border-transparent'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      {visibleSubTabs.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-slate-900/90 border border-slate-800 w-fit">
+          {visibleSubTabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setSubTab(tab.id)}
+              className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
+                activeSubTab === tab.id
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                  : 'text-slate-400 hover:text-slate-200 border border-transparent'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {subTab === 'expenses' && (
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <form onSubmit={handleAddExpense} className="glass-panel rounded-2xl p-5 space-y-4">
-            <h3 className="text-sm font-bold text-white">Record Expense</h3>
+      {activeSubTab === 'expenses' && canViewExpenses && (
+        <div className={`grid grid-cols-1 ${canEditExpenses ? 'xl:grid-cols-3' : ''} gap-6`}>
+          {canEditExpenses && (
+            <form onSubmit={handleAddExpense} className="glass-panel rounded-2xl p-5 space-y-4">
+              <h3 className="text-sm font-bold text-white">Record Expense</h3>
             <div>
               <label className="block text-xs text-slate-300 mb-1">Category</label>
               <select
@@ -367,8 +404,9 @@ export const ExpensesView: React.FC = () => {
               <span>Save Expense</span>
             </button>
           </form>
+          )}
 
-          <div className="xl:col-span-2 glass-panel rounded-2xl overflow-hidden">
+          <div className={`${canEditExpenses ? 'xl:col-span-2' : ''} glass-panel rounded-2xl overflow-hidden`}>
             <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
               <h3 className="text-sm font-bold text-white">Expenses Ledger</h3>
               <span className="text-xs text-rose-300 font-semibold tabular-nums">
@@ -383,7 +421,7 @@ export const ExpensesView: React.FC = () => {
                     <th className="py-2.5 px-4 text-start">Payee &amp; Linked Booking</th>
                     <th className="py-2.5 px-4 text-start">Mode</th>
                     <th className="py-2.5 px-4 text-end">Amount</th>
-                    <th className="py-2.5 px-4 text-end">{tr('actions', lang)}</th>
+                    {canDeleteExpenses && <th className="py-2.5 px-4 text-end">{tr('actions', lang)}</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/70">
@@ -414,15 +452,17 @@ export const ExpensesView: React.FC = () => {
                         <td className="py-3 px-4 text-end font-bold text-rose-300 tabular-nums">
                           {formatPKR(ex.amount)}
                         </td>
-                        <td className="py-3 px-4 text-end">
-                          <button
-                            type="button"
-                            onClick={() => softDeleteExpense(ex.id)}
-                            className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-rose-400"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
+                        {canDeleteExpenses && (
+                          <td className="py-3 px-4 text-end">
+                            <button
+                              type="button"
+                              onClick={() => softDeleteExpense(ex.id)}
+                              className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-rose-400"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -433,14 +473,15 @@ export const ExpensesView: React.FC = () => {
         </div>
       )}
 
-      {subTab === 'staff' && (
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <form onSubmit={handleSaveEmployee} className="glass-panel rounded-2xl p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Users className="w-4 h-4 text-cyan-400" />
-                <span>{editingEmpId ? 'Edit Staff Member' : 'Add Staff Member'}</span>
-              </h3>
+      {activeSubTab === 'staff' && canViewEmployees && (
+        <div className={`grid grid-cols-1 ${canEditEmployees ? 'xl:grid-cols-3' : ''} gap-6`}>
+          {canEditEmployees && (
+            <form onSubmit={handleSaveEmployee} className="glass-panel rounded-2xl p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Users className="w-4 h-4 text-cyan-400" />
+                  <span>{editingEmpId ? 'Edit Staff Member' : 'Add Staff Member'}</span>
+                </h3>
               {editingEmpId && (
                 <button
                   type="button"
@@ -525,8 +566,9 @@ export const ExpensesView: React.FC = () => {
               {editingEmpId ? 'Update Staff Member' : 'Add Staff Member'}
             </button>
           </form>
+          )}
 
-          <div className="xl:col-span-2 glass-panel rounded-2xl overflow-hidden">
+          <div className={`${canEditEmployees ? 'xl:col-span-2' : ''} glass-panel rounded-2xl overflow-hidden`}>
             <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between gap-2">
               <h3 className="text-sm font-bold text-white">Staff Directory ({activeEmployees.length} Active)</h3>
               <label className="inline-flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
@@ -545,7 +587,9 @@ export const ExpensesView: React.FC = () => {
                     <th className="py-2.5 px-4 text-start">Staff Member</th>
                     <th className="py-2.5 px-4 text-start">Type &amp; Status</th>
                     <th className="py-2.5 px-4 text-end">Rate (PKR)</th>
-                    <th className="py-2.5 px-4 text-end">{tr('actions', lang)}</th>
+                    {(canEditEmployees || canDeleteEmployees) && (
+                      <th className="py-2.5 px-4 text-end">{tr('actions', lang)}</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/70">
@@ -568,38 +612,46 @@ export const ExpensesView: React.FC = () => {
                       <td className="py-3 px-4 text-end font-bold text-white tabular-nums">
                         {formatPKR(emp.base_rate)}
                       </td>
-                      <td className="py-3 px-4 text-end">
-                        <div className="inline-flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleEditEmployeeClick(emp)}
-                            title="Edit employee"
-                            className="p-1.5 rounded-lg border border-slate-800 text-slate-300 hover:text-cyan-300"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => toggleEmployeeActive(emp.id, !emp.is_active)}
-                            title={emp.is_active ? 'Deactivate' : 'Reactivate'}
-                            className={`p-1.5 rounded-lg border border-slate-800 ${
-                              emp.is_active
-                                ? 'text-slate-300 hover:text-amber-300'
-                                : 'text-emerald-400 hover:text-emerald-300'
-                            }`}
-                          >
-                            <Power className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => softDeleteEmployee(emp.id)}
-                            title="Move to Bin"
-                            className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-rose-400"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
+                      {(canEditEmployees || canDeleteEmployees) && (
+                        <td className="py-3 px-4 text-end">
+                          <div className="inline-flex items-center gap-1.5">
+                            {canEditEmployees && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditEmployeeClick(emp)}
+                                  title="Edit employee"
+                                  className="p-1.5 rounded-lg border border-slate-800 text-slate-300 hover:text-cyan-300"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleEmployeeActive(emp.id, !emp.is_active)}
+                                  title={emp.is_active ? 'Deactivate' : 'Reactivate'}
+                                  className={`p-1.5 rounded-lg border border-slate-800 ${
+                                    emp.is_active
+                                      ? 'text-slate-300 hover:text-amber-300'
+                                      : 'text-emerald-400 hover:text-emerald-300'
+                                  }`}
+                                >
+                                  <Power className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            )}
+                            {canDeleteEmployees && (
+                              <button
+                                type="button"
+                                onClick={() => softDeleteEmployee(emp.id)}
+                                title="Move to Bin"
+                                className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-rose-400"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -609,7 +661,7 @@ export const ExpensesView: React.FC = () => {
         </div>
       )}
 
-      {subTab === 'attendance' && (
+      {activeSubTab === 'attendance' && canViewAttendance && (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {/* Daily Attendance Marking */}
           <div className="glass-panel rounded-2xl overflow-hidden">
@@ -651,8 +703,9 @@ export const ExpensesView: React.FC = () => {
                           <button
                             key={st}
                             type="button"
+                            disabled={!canEditAttendance}
                             onClick={() => saveAttendance(emp.id, attDate, st)}
-                            className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition-colors ${
+                            className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                               selected
                                 ? activeCls
                                 : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:text-white'
@@ -717,11 +770,12 @@ export const ExpensesView: React.FC = () => {
         </div>
       )}
 
-      {subTab === 'payroll' && (
+      {activeSubTab === 'payroll' && canViewSalaries && (
         <div className="space-y-6">
           {/* Advances Form + Recent Advances */}
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-            <form onSubmit={handleAddAdvance} className="glass-panel rounded-2xl p-5 space-y-3 text-xs">
+          <div className={`grid grid-cols-1 ${canEditSalaries ? 'xl:grid-cols-3' : ''} gap-6`}>
+            {canEditSalaries && (
+              <form onSubmit={handleAddAdvance} className="glass-panel rounded-2xl p-5 space-y-3 text-xs">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
                 <Wallet className="w-4 h-4 text-amber-400" />
                 <span>Record Salary Advance</span>
@@ -793,8 +847,9 @@ export const ExpensesView: React.FC = () => {
                 Save Advance Entry
               </button>
             </form>
+            )}
 
-            <div className="xl:col-span-2 glass-panel rounded-2xl overflow-hidden">
+            <div className={`${canEditSalaries ? 'xl:col-span-2' : ''} glass-panel rounded-2xl overflow-hidden`}>
               <div className="px-5 py-3.5 border-b border-slate-800">
                 <h3 className="text-sm font-bold text-white">Employee Salary Advances</h3>
               </div>
@@ -870,7 +925,7 @@ export const ExpensesView: React.FC = () => {
                     <th className="py-2.5 px-4 text-end">Att. Deduction</th>
                     <th className="py-2.5 px-4 text-end">Advances</th>
                     <th className="py-2.5 px-4 text-end">Net Payable</th>
-                    <th className="py-2.5 px-4 text-end">Disburse</th>
+                    {canEditSalaries && <th className="py-2.5 px-4 text-end">Disburse</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/70">
@@ -897,29 +952,31 @@ export const ExpensesView: React.FC = () => {
                       <td className="py-3 px-4 text-end tabular-nums font-bold text-emerald-400">
                         {formatPKR(row.netPayable)}
                       </td>
-                      <td className="py-3 px-4 text-end">
-                        {row.alreadyPaidThisMonth ? (
-                          <span className="text-[11px] font-semibold text-emerald-400">Paid ({payrollMonth})</span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              payEmployeeSalary({
-                                employeeId: row.emp.id,
-                                month: payrollMonth,
-                                netPayable: row.netPayable,
-                                totalAdvancesDeducted: row.unsettledAdvances,
-                                mode: 'Cash',
-                                notes: `Salary Sheet ${payrollMonth} (${row.emp.role_title})`,
-                              })
-                            }
-                            className="px-3 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/15 text-emerald-300 text-xs font-semibold inline-flex items-center gap-1 hover:bg-emerald-500/25"
-                          >
-                            <Banknote className="w-3.5 h-3.5" />
-                            <span>Pay &amp; Post Expense</span>
-                          </button>
-                        )}
-                      </td>
+                      {canEditSalaries && (
+                        <td className="py-3 px-4 text-end">
+                          {row.alreadyPaidThisMonth ? (
+                            <span className="text-[11px] font-semibold text-emerald-400">Paid ({payrollMonth})</span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                payEmployeeSalary({
+                                  employeeId: row.emp.id,
+                                  month: payrollMonth,
+                                  netPayable: row.netPayable,
+                                  totalAdvancesDeducted: row.unsettledAdvances,
+                                  mode: 'Cash',
+                                  notes: `Salary Sheet ${payrollMonth} (${row.emp.role_title})`,
+                                })
+                              }
+                              className="px-3 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/15 text-emerald-300 text-xs font-semibold inline-flex items-center gap-1 hover:bg-emerald-500/25"
+                            >
+                              <Banknote className="w-3.5 h-3.5" />
+                              <span>Pay &amp; Post Expense</span>
+                            </button>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -929,39 +986,41 @@ export const ExpensesView: React.FC = () => {
         </div>
       )}
 
-      {subTab === 'categories' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <form onSubmit={handleAddCategory} className="glass-panel rounded-2xl p-5 space-y-4">
-            <h3 className="text-sm font-bold text-white">Add Expense Category</h3>
-            <div>
-              <label className="block text-xs text-slate-300 mb-1">Category Name (English) *</label>
-              <input
-                type="text"
-                required
-                value={catEn}
-                onChange={(e) => setCatEn(e.target.value)}
-                placeholder="Generator Fuel"
-                className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-slate-300 mb-1">Category Name (Urdu)</label>
-              <input
-                type="text"
-                dir="rtl"
-                value={catUr}
-                onChange={(e) => setCatUr(e.target.value)}
-                placeholder="جنریٹر فیول"
-                className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-urdu"
-              />
-            </div>
-            <button
-              type="submit"
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold"
-            >
-              Add Category
-            </button>
-          </form>
+      {activeSubTab === 'categories' && canViewExpenses && (
+        <div className={`grid grid-cols-1 ${canEditExpenses ? 'md:grid-cols-2' : ''} gap-6`}>
+          {canEditExpenses && (
+            <form onSubmit={handleAddCategory} className="glass-panel rounded-2xl p-5 space-y-4">
+              <h3 className="text-sm font-bold text-white">Add Expense Category</h3>
+              <div>
+                <label className="block text-xs text-slate-300 mb-1">Category Name (English) *</label>
+                <input
+                  type="text"
+                  required
+                  value={catEn}
+                  onChange={(e) => setCatEn(e.target.value)}
+                  placeholder="Generator Fuel"
+                  className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-300 mb-1">Category Name (Urdu)</label>
+                <input
+                  type="text"
+                  dir="rtl"
+                  value={catUr}
+                  onChange={(e) => setCatUr(e.target.value)}
+                  placeholder="جنریٹر فیول"
+                  className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-urdu"
+                />
+              </div>
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold"
+              >
+                Add Category
+              </button>
+            </form>
+          )}
 
           <div className="glass-panel rounded-2xl p-5">
             <h3 className="text-sm font-bold text-white mb-3">Active Expense Categories</h3>

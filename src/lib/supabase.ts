@@ -18,8 +18,8 @@ const rawKey =
   env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
-const supabaseUrl = rawUrl?.trim();
-const supabaseKey = rawKey?.trim();
+export const supabaseUrl = rawUrl?.trim() || '';
+export const supabaseAnonKey = rawKey?.trim() || '';
 
 const hasValidUrl = Boolean(
   supabaseUrl &&
@@ -28,8 +28,8 @@ const hasValidUrl = Boolean(
 );
 
 const hasValidKey = Boolean(
-  supabaseKey &&
-    !supabaseKey.includes('your-supabase-anon-key')
+  supabaseAnonKey &&
+    !supabaseAnonKey.includes('your-supabase-anon-key')
 );
 
 export const supabaseEnvStatus = {
@@ -41,7 +41,7 @@ export const supabaseEnvStatus = {
 export const isSupabaseConfigured = hasValidUrl && hasValidKey;
 
 export const supabase: SupabaseClient | null = isSupabaseConfigured
-  ? createClient(supabaseUrl!, supabaseKey!, {
+  ? createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,

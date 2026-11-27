@@ -24,11 +24,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenInvoice,
   onNavigateReminders,
 }) => {
-  const { db, lang, currentUser } = useApp();
+  const { db, lang, can } = useApp();
   const today = todayISO();
   const currentMonthPrefix = today.slice(0, 7);
   const next7End = addDaysISO(today, 7);
-  const isFinanceOrAdmin = currentUser?.role === 'super_admin' || currentUser?.role === 'finance';
+  const canSeeExpensesAndProfit = can('expenses', 'view') || can('reports', 'view');
+  const canViewInvoices = can('invoices', 'view');
+  const canViewReminders = can('reminders', 'view');
 
   const activeBookings = useMemo(
     () => db.bookings.filter((b) => !b.deleted_at && b.status !== 'Cancelled'),
@@ -162,7 +164,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <TrendingUp className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="mt-3 text-2xl font-bold text-white tabular-nums">
-            {isFinanceOrAdmin ? formatPKR(financialStats.monthIncome) : `${activeBookings.length} Active`}
+            {formatPKR(financialStats.monthIncome)}
           </div>
           <div className="mt-2 text-xs text-slate-400 tabular-nums">
             {currentMonthPrefix}
@@ -171,16 +173,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
         <div className="glass-panel rounded-2xl p-5 border border-slate-800">
           <div className="flex items-center justify-between text-xs text-slate-400">
-            <span>{tr('monthExpenses', lang)}</span>
+            <span>{canSeeExpensesAndProfit ? tr('monthExpenses', lang) : 'Active Bookings'}</span>
             <TrendingDown className="w-4 h-4 text-rose-400" />
           </div>
           <div className="mt-3 text-2xl font-bold text-white tabular-nums">
-            {isFinanceOrAdmin ? formatPKR(financialStats.monthExpenses) : 'Restricted'}
+            {canSeeExpensesAndProfit ? formatPKR(financialStats.monthExpenses) : activeBookings.length}
           </div>
           <div className="mt-2 text-xs text-slate-400">
-            {isFinanceOrAdmin
+            {canSeeExpensesAndProfit
               ? `${tr('netProfit', lang)}: ${formatPKR(financialStats.monthProfit)}`
-              : 'Finance & Admin access'}
+              : `${upcoming7Days.length} upcoming in next 7 days`}
           </div>
         </div>
 
@@ -205,10 +207,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
             <div>
               <h2 className="text-base font-semibold text-white">
-                {lang === 'ur' ? 'ماہانہ آمدنی بمقابلہ اخراجات (6 ماہ)' : '6-Month Income vs. Expenses (PKR)'}
+                {canSeeExpensesAndProfit
+                  ? lang === 'ur'
+                    ? 'ماہانہ آمدنی بمقابلہ اخراجات (6 ماہ)'
+                    : '6-Month Income vs. Expenses (PKR)'
+                  : lang === 'ur'
+                  ? 'ماہانہ وصولیاں (6 ماہ)'
+                  : '6-Month Collections (PKR)'}
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                {lang === 'ur' ? 'وصول شدہ ادائیگیاں اور آپریشنل اخراجات' : 'Collected payments against hall operational expenses'}
+                {canSeeExpensesAndProfit
+                  ? lang === 'ur'
+                    ? 'وصول شدہ ادائیگیاں اور آپریشنل اخراجات'
+                    : 'Collected payments against hall operational expenses'
+                  : lang === 'ur'
+                  ? 'گزشتہ 6 ماہ کی وصول شدہ ادائیگیاں'
+                  : 'Monthly customer payments collected'}
               </p>
             </div>
             <div className="flex items-center gap-4 text-xs">
@@ -216,10 +230,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <span className="w-2.5 h-2.5 rounded-sm bg-cyan-400 inline-block" />
                 {lang === 'ur' ? 'آمدنی' : 'Income'}
               </span>
-              <span className="flex items-center gap-1.5 text-violet-300">
-                <span className="w-2.5 h-2.5 rounded-sm bg-violet-500 inline-block" />
-                {lang === 'ur' ? 'اخراجات' : 'Expenses'}
-              </span>
+              {canSeeExpensesAndProfit && (
+                <span className="flex items-center gap-1.5 text-violet-300">
+                  <span className="w-2.5 h-2.5 rounded-sm bg-violet-500 inline-block" />
+                  {lang === 'ur' ? 'اخراجات' : 'Expenses'}
+                </span>
+              )}
             </div>
           </div>
 
@@ -244,7 +260,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 return (
                   <g key={m.key}>
                     <rect
-                      x={groupX}
+                      x={canSeeExpensesAndProfit ? groupX : groupX + 14}
                       y={180 - incH}
                       width="24"
                       height={incH}
@@ -254,17 +270,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     >
                       <title>{`${m.label} Income: ${formatPKR(m.income)}`}</title>
                     </rect>
-                    <rect
-                      x={groupX + 28}
-                      y={180 - expH}
-                      width="24"
-                      height={expH}
-                      rx="4"
-                      fill="#8B5CF6"
-                      opacity="0.85"
-                    >
-                      <title>{`${m.label} Expenses: ${formatPKR(m.expense)}`}</title>
-                    </rect>
+                    {canSeeExpensesAndProfit && (
+                      <rect
+                        x={groupX + 28}
+                        y={180 - expH}
+                        width="24"
+                        height={expH}
+                        rx="4"
+                        fill="#8B5CF6"
+                        opacity="0.85"
+                      >
+                        <title>{`${m.label} Expenses: ${formatPKR(m.expense)}`}</title>
+                      </rect>
+                    )}
                     <text
                       x={groupX + 26}
                       y="202"
@@ -363,14 +381,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <MessageCircle className="w-3.5 h-3.5" />
                       <span>{tr('whatsApp', lang)}</span>
                     </a>
-                    <button
-                      type="button"
-                      onClick={() => onOpenInvoice(bk)}
-                      className="px-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-800/70 text-slate-200 text-xs font-medium hover:border-cyan-500/40 flex items-center gap-1 whitespace-nowrap"
-                    >
-                      <span>Invoice</span>
-                      <ArrowUpRight className="w-3.5 h-3.5" />
-                    </button>
+                    {canViewInvoices && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenInvoice(bk)}
+                        className="px-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-800/70 text-slate-200 text-xs font-medium hover:border-cyan-500/40 flex items-center gap-1 whitespace-nowrap"
+                      >
+                        <span>Invoice</span>
+                        <ArrowUpRight className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -388,13 +408,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <Bell className="w-4 h-4 text-amber-400" />
               <span>{tr('upcomingDue', lang)}</span>
             </h2>
-            <button
-              type="button"
-              onClick={onNavigateReminders}
-              className="text-xs text-cyan-400 hover:underline whitespace-nowrap"
-            >
-              View All
-            </button>
+            {canViewReminders && (
+              <button
+                type="button"
+                onClick={onNavigateReminders}
+                className="text-xs text-cyan-400 hover:underline whitespace-nowrap"
+              >
+                View All
+              </button>
+            )}
           </div>
           <div className="divide-y divide-slate-800/70">
             {installmentAlerts.slice(0, 5).map(({ ins, booking, isOverdue }) => {

@@ -13,12 +13,12 @@ interface CalendarViewProps {
 type CalMode = 'month' | 'week' | 'day';
 
 export const CalendarView: React.FC<CalendarViewProps> = ({ onSelectBooking, onCreateOnDate }) => {
-  const { db, lang, currentUser } = useApp();
+  const { db, lang, can } = useApp();
   const [mode, setMode] = useState<CalMode>('month');
   const [cursorDate, setCursorDate] = useState<string>(todayISO());
   const [floorFilter, setFloorFilter] = useState<'ALL' | FloorName>('ALL');
 
-  const canCreate = currentUser?.role === 'super_admin' || currentUser?.role === 'management';
+  const canCreate = can('bookings', 'edit');
 
   const filteredBookings = useMemo(() => {
     return db.bookings

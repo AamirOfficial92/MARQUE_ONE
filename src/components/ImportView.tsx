@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { CheckCircle2, Download, FileSpreadsheet, Upload } from 'lucide-react';
+import { CheckCircle2, Database, Download, FileSpreadsheet, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useApp } from '../context/AppContext';
 import { Booking, FloorName } from '../types';
@@ -22,7 +22,9 @@ const BOOKING_TARGET_FIELDS = [
 ] as const;
 
 export const ImportView: React.FC = () => {
-  const { db, importBookingsBatch } = useApp();
+  const { db, rawDb, activeHall, currentUser, can, importBookingsBatch } = useApp();
+  const canEditImport = can('backup_import', 'edit');
+  const isSuperAdmin = currentUser?.role === 'super_admin';
   const [sheetHeaders, setSheetHeaders] = useState<string[]>([]);
   const [rawRows, setRawRows] = useState<Record<string, unknown>[]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
@@ -143,12 +145,77 @@ export const ImportView: React.FC = () => {
   };
 
   const handleConfirmImport = async () => {
+    if (!canEditImport) return;
     const res = await importBookingsBatch(mappedPreview.map((m) => m.candidate));
     setResult(res);
   };
 
+  const handleDownloadJsonBackup = () => {
+    const source = isSuperAdmin ? rawDb : db;
+    const slug = isSuperAdmin ? 'all-halls' : activeHall.booking_code_prefix.toLowerCase();
+    const blob = new Blob([JSON.stringify(source, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `marquee-${slug}-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadExcelBackup = () => {
+    const source = isSuperAdmin ? rawDb : db;
+    const slug = isSuperAdmin ? 'all-halls' : activeHall.booking_code_prefix.toLowerCase();
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(source.customers), 'Customers');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(source.bookings), 'Bookings');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(source.bookingItems), 'BookingItems');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(source.payments), 'Payments');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(source.dailyClosings), 'DailyClosings');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(source.chargesCatalog), 'ChargesCatalog');
+    if (can('expenses', 'view')) {
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(source.expenses), 'Expenses');
+    }
+    if (can('employees', 'view')) {
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(source.employees), 'Employees');
+    }
+    XLSX.writeFile(wb, `marquee-${slug}-backup-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
   return (
     <div className="space-y-6">
+      <div className="glass-panel rounded-2xl p-6 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 className="text-base font-bold text-white flex items-center gap-2">
+            <Database className="w-5 h-5 text-violet-400" />
+            <span>
+              {isSuperAdmin ? 'System Backup (All Halls)' : `${activeHall.name} Data Backup`}
+            </span>
+          </h2>
+          <p className="text-xs text-slate-400 mt-1">
+            Export permitted hall records as a JSON snapshot or multi-sheet Excel workbook.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={handleDownloadJsonBackup}
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold flex items-center gap-1.5"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Download JSON Backup</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleDownloadExcelBackup}
+            className="px-4 py-2 rounded-xl border border-emerald-500/40 bg-emerald-500/15 text-emerald-300 text-xs font-semibold flex items-center gap-1.5"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5" />
+            <span>Download Excel (.xlsx)</span>
+          </button>
+        </div>
+      </div>
+
       <div className="glass-panel rounded-2xl p-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-base font-bold text-white flex items-center gap-2">
@@ -170,11 +237,13 @@ export const ImportView: React.FC = () => {
             <span>Sample CSV Template</span>
           </button>
 
-          <label className="cursor-pointer px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold flex items-center gap-1.5">
-            <Upload className="w-3.5 h-3.5" />
-            <span>Upload CSV / XLSX</span>
-            <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileUpload} className="hidden" />
-          </label>
+          {canEditImport && (
+            <label className="cursor-pointer px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold flex items-center gap-1.5">
+              <Upload className="w-3.5 h-3.5" />
+              <span>Upload CSV / XLSX</span>
+              <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileUpload} className="hidden" />
+            </label>
+          )}
         </div>
       </div>
 
@@ -224,13 +293,15 @@ export const ImportView: React.FC = () => {
           <div className="glass-panel rounded-2xl overflow-hidden">
             <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
               <h3 className="text-sm font-bold text-white">Preview ({mappedPreview.length} rows)</h3>
-              <button
-                type="button"
-                onClick={handleConfirmImport}
-                className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold"
-              >
-                Confirm & Import Valid Rows
-              </button>
+              {canEditImport && (
+                <button
+                  type="button"
+                  onClick={handleConfirmImport}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold"
+                >
+                  Confirm & Import Valid Rows
+                </button>
+              )}
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">

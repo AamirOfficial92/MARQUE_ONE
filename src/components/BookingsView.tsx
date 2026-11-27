@@ -19,13 +19,16 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
   onOpenInvoice,
   onGoToPayments,
 }) => {
-  const { db, lang, currentUser, softDeleteBooking } = useApp();
+  const { db, lang, can, softDeleteBooking } = useApp();
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | BookingStatus>('ALL');
   const [cancellingBooking, setCancellingBooking] = useState<Booking | null>(null);
 
-  const canModify = currentUser?.role === 'super_admin' || currentUser?.role === 'management';
-  const canDelete = currentUser?.role === 'super_admin' || currentUser?.role === 'management';
+  const canModify = can('bookings', 'edit');
+  const canDelete = can('bookings', 'delete');
+  const canSeeInvoices = can('invoices', 'view');
+  const canRecordPayment = can('payments', 'edit');
+  const canSeeProfitAndExpenses = can('expenses', 'view') || can('reports', 'view');
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -111,7 +114,9 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                 <th className="py-3 px-4 text-start">Code &amp; Customer</th>
                 <th className="py-3 px-4 text-start">Event &amp; Floors</th>
                 <th className="py-3 px-4 text-start">Status &amp; Adjustments</th>
-                <th className="py-3 px-4 text-end">Agreed Total / Profit</th>
+                <th className="py-3 px-4 text-end">
+                  {canSeeProfitAndExpenses ? 'Agreed Total / Profit' : 'Agreed Total'}
+                </th>
                 <th className="py-3 px-4 text-end">{tr('actions', lang)}</th>
               </tr>
             </thead>
@@ -179,12 +184,14 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                           Bal: {formatPKR(fin.balance)}
                         </span>
                       </div>
-                      <div className="text-[11px] tabular-nums mt-0.5">
-                        <span className="text-slate-500">Exp: {formatPKR(fin.linkedExpensesTotal)} · </span>
-                        <span className={fin.bookingProfit >= 0 ? 'text-emerald-400 font-semibold' : 'text-rose-400 font-semibold'}>
-                          Profit: {formatPKR(fin.bookingProfit)}
-                        </span>
-                      </div>
+                      {canSeeProfitAndExpenses && (
+                        <div className="text-[11px] tabular-nums mt-0.5">
+                          <span className="text-slate-500">Exp: {formatPKR(fin.linkedExpensesTotal)} · </span>
+                          <span className={fin.bookingProfit >= 0 ? 'text-emerald-400 font-semibold' : 'text-rose-400 font-semibold'}>
+                            Profit: {formatPKR(fin.bookingProfit)}
+                          </span>
+                        </div>
+                      )}
                       <div className="mt-1.5 h-1.5 w-full rounded-full bg-slate-800 overflow-hidden">
                         <div
                           className="h-full bg-gradient-to-r from-cyan-400 to-emerald-400"
@@ -198,20 +205,22 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                         <button
                           type="button"
                           onClick={() => onEditBooking(bk)}
-                          title={tr('edit', lang)}
+                          title={canModify ? tr('edit', lang) : 'View Details'}
                           className="p-2 rounded-lg border border-slate-800 bg-slate-900/70 text-slate-300 hover:text-cyan-300 hover:border-cyan-500/40"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => onOpenInvoice(bk)}
-                          title="Invoice PDF"
-                          className="p-2 rounded-lg border border-slate-800 bg-slate-900/70 text-slate-300 hover:text-amber-300 hover:border-amber-500/40"
-                        >
-                          <FileText className="w-3.5 h-3.5" />
-                        </button>
-                        {(currentUser?.role === 'super_admin' || currentUser?.role === 'finance') && (
+                        {canSeeInvoices && (
+                          <button
+                            type="button"
+                            onClick={() => onOpenInvoice(bk)}
+                            title="Invoice PDF"
+                            className="p-2 rounded-lg border border-slate-800 bg-slate-900/70 text-slate-300 hover:text-amber-300 hover:border-amber-500/40"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {canRecordPayment && (
                           <button
                             type="button"
                             onClick={() => onGoToPayments(bk.id)}

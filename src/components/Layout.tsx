@@ -2,10 +2,14 @@ import React, { useMemo, useState } from 'react';
 import {
   BarChart3,
   Bell,
+  Building2,
+  CalendarCheck,
   CalendarDays,
+  ClipboardCheck,
   ClipboardList,
   CreditCard,
   FileSpreadsheet,
+  FileText,
   Globe,
   History,
   LayoutDashboard,
@@ -16,23 +20,36 @@ import {
   Receipt,
   Search,
   Settings,
+  ShieldCheck,
+  Sparkles,
   Sun,
   Trash2,
+  UserCheck,
   UserCog,
+  Users,
+  Wallet,
   X,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { HALL_LOGO_SRC } from '../data/seedData';
-import { tr, translateStatus } from '../i18n/translations';
-import { Booking, UserRole } from '../types';
+import { tr, translateRole, translateStatus } from '../i18n/translations';
+import { Booking, PermissionScreenKey, UserRole } from '../types';
 import { formatDateDisplay } from '../utils/formatters';
 
 export type NavTabId =
   | 'dashboard'
   | 'calendar'
   | 'bookings'
+  | 'approvals'
+  | 'customers'
   | 'payments'
+  | 'invoices'
+  | 'closing'
+  | 'catalog'
   | 'expenses'
+  | 'employees'
+  | 'attendance'
+  | 'salaries'
   | 'reports'
   | 'reminders'
   | 'import'
@@ -49,12 +66,35 @@ interface LayoutProps {
   children: React.ReactNode;
 }
 
-interface NavItemConfig {
+export interface NavItemConfig {
   id: NavTabId;
+  screenKey: PermissionScreenKey;
   labelKey: Parameters<typeof tr>[0];
   icon: React.ReactNode;
-  roles: UserRole[];
 }
+
+export const TAB_TO_SCREEN_KEY: Record<NavTabId, PermissionScreenKey> = {
+  dashboard: 'dashboard',
+  calendar: 'calendar',
+  bookings: 'bookings',
+  approvals: 'bookings',
+  customers: 'customers',
+  payments: 'payments',
+  invoices: 'invoices',
+  closing: 'daily_closing',
+  catalog: 'catalog',
+  expenses: 'expenses',
+  employees: 'employees',
+  attendance: 'attendance',
+  salaries: 'salaries',
+  reports: 'reports',
+  reminders: 'reminders',
+  import: 'backup_import',
+  recycle: 'recycle_bin',
+  audit: 'audit_log',
+  users: 'users',
+  settings: 'settings',
+};
 
 export const Layout: React.FC<LayoutProps> = ({
   activeTab,
@@ -63,37 +103,71 @@ export const Layout: React.FC<LayoutProps> = ({
   onOpenBookingFromSearch,
   children,
 }) => {
-  const { db, currentUser, lang, toggleLang, theme, toggleTheme, signOut, supabaseLive } = useApp();
+  const {
+    db,
+    activeHall,
+    activeHallId,
+    setActiveHallId,
+    currentUser,
+    can,
+    lang,
+    toggleLang,
+    theme,
+    toggleTheme,
+    signOut,
+    supabaseLive,
+  } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [moreDrawerOpen, setMoreDrawerOpen] = useState(false);
 
-  const role: UserRole = currentUser?.role || 'management';
+  const role: UserRole = currentUser?.role || 'manager';
+
+  const pendingApprovalsCount = useMemo(
+    () => db.approvalRequests.filter((r) => r.status === 'pending').length,
+    [db.approvalRequests]
+  );
 
   const navItems: NavItemConfig[] = useMemo(
     () => [
-      { id: 'dashboard', labelKey: 'dashboard', icon: <LayoutDashboard className="w-4 h-4" />, roles: ['super_admin', 'management', 'finance'] },
-      { id: 'calendar', labelKey: 'calendar', icon: <CalendarDays className="w-4 h-4" />, roles: ['super_admin', 'management', 'finance'] },
-      { id: 'bookings', labelKey: 'bookings', icon: <ClipboardList className="w-4 h-4" />, roles: ['super_admin', 'management', 'finance'] },
-      { id: 'payments', labelKey: 'payments', icon: <CreditCard className="w-4 h-4" />, roles: ['super_admin', 'finance'] },
-      { id: 'expenses', labelKey: 'expenses', icon: <Receipt className="w-4 h-4" />, roles: ['super_admin', 'finance'] },
-      { id: 'reminders', labelKey: 'reminders', icon: <Bell className="w-4 h-4" />, roles: ['super_admin', 'management', 'finance'] },
-      { id: 'reports', labelKey: 'reports', icon: <BarChart3 className="w-4 h-4" />, roles: ['super_admin', 'finance'] },
-      { id: 'import', labelKey: 'importData', icon: <FileSpreadsheet className="w-4 h-4" />, roles: ['super_admin', 'management'] },
-      { id: 'recycle', labelKey: 'recycleBin', icon: <Trash2 className="w-4 h-4" />, roles: ['super_admin'] },
-      { id: 'audit', labelKey: 'auditLog', icon: <History className="w-4 h-4" />, roles: ['super_admin'] },
-      { id: 'users', labelKey: 'users', icon: <UserCog className="w-4 h-4" />, roles: ['super_admin'] },
-      { id: 'settings', labelKey: 'settings', icon: <Settings className="w-4 h-4" />, roles: ['super_admin'] },
+      { id: 'dashboard', screenKey: 'dashboard', labelKey: 'dashboard', icon: <LayoutDashboard className="w-4 h-4" /> },
+      { id: 'calendar', screenKey: 'calendar', labelKey: 'calendar', icon: <CalendarDays className="w-4 h-4" /> },
+      { id: 'bookings', screenKey: 'bookings', labelKey: 'bookings', icon: <ClipboardList className="w-4 h-4" /> },
+      { id: 'approvals', screenKey: 'bookings', labelKey: 'approvals', icon: <ShieldCheck className="w-4 h-4" /> },
+      { id: 'customers', screenKey: 'customers', labelKey: 'customers', icon: <Users className="w-4 h-4" /> },
+      { id: 'payments', screenKey: 'payments', labelKey: 'payments', icon: <CreditCard className="w-4 h-4" /> },
+      { id: 'invoices', screenKey: 'invoices', labelKey: 'invoices', icon: <FileText className="w-4 h-4" /> },
+      { id: 'closing', screenKey: 'daily_closing', labelKey: 'dailyClosing', icon: <ClipboardCheck className="w-4 h-4" /> },
+      { id: 'catalog', screenKey: 'catalog', labelKey: 'catalog', icon: <Sparkles className="w-4 h-4" /> },
+      { id: 'expenses', screenKey: 'expenses', labelKey: 'expenses', icon: <Receipt className="w-4 h-4" /> },
+      { id: 'employees', screenKey: 'employees', labelKey: 'employees', icon: <UserCheck className="w-4 h-4" /> },
+      { id: 'attendance', screenKey: 'attendance', labelKey: 'attendance', icon: <CalendarCheck className="w-4 h-4" /> },
+      { id: 'salaries', screenKey: 'salaries', labelKey: 'salaries', icon: <Wallet className="w-4 h-4" /> },
+      { id: 'reports', screenKey: 'reports', labelKey: 'reports', icon: <BarChart3 className="w-4 h-4" /> },
+      { id: 'reminders', screenKey: 'reminders', labelKey: 'reminders', icon: <Bell className="w-4 h-4" /> },
+      { id: 'import', screenKey: 'backup_import', labelKey: 'importData', icon: <FileSpreadsheet className="w-4 h-4" /> },
+      { id: 'recycle', screenKey: 'recycle_bin', labelKey: 'recycleBin', icon: <Trash2 className="w-4 h-4" /> },
+      { id: 'audit', screenKey: 'audit_log', labelKey: 'auditLog', icon: <History className="w-4 h-4" /> },
+      { id: 'users', screenKey: 'users', labelKey: 'users', icon: <UserCog className="w-4 h-4" /> },
+      { id: 'settings', screenKey: 'settings', labelKey: 'settings', icon: <Settings className="w-4 h-4" /> },
     ],
     []
   );
 
   const permittedNav = useMemo(
-    () => navItems.filter((item) => item.roles.includes(role)),
-    [navItems, role]
+    () => navItems.filter((item) => can(item.screenKey, 'view')),
+    [navItems, can]
   );
 
-  // Global search across booking code, customer name, phone, NIC, or event date
+  const canSearchBookings =
+    can('bookings', 'view') ||
+    can('calendar', 'view') ||
+    can('dashboard', 'view') ||
+    can('invoices', 'view') ||
+    can('payments', 'view');
+
+  // Global search across active hall's booking code, customer name, phone, NIC, or event date
   const searchResults = useMemo(() => {
+    if (!canSearchBookings) return [];
     const q = searchQuery.trim().toLowerCase();
     if (!q) return [];
     return db.bookings
@@ -107,9 +181,9 @@ export const Layout: React.FC<LayoutProps> = ({
           b.event_date.includes(q)
       )
       .slice(0, 6);
-  }, [searchQuery, db.bookings]);
+  }, [searchQuery, db.bookings, canSearchBookings]);
 
-  const canCreateBooking = role === 'super_admin' || role === 'management';
+  const canCreateBooking = can('bookings', 'edit');
 
   const mobilePrimary = permittedNav.slice(0, 4);
   const mobileOverflow = permittedNav.slice(4);
@@ -120,7 +194,7 @@ export const Layout: React.FC<LayoutProps> = ({
       <aside className="no-print hidden lg:flex lg:flex-col lg:w-64 lg:shrink-0 border-e border-slate-800/80 bg-white/95 dark:bg-[#090E1B]/95 backdrop-blur-xl sticky top-0 h-screen">
         <div className="p-5 border-b border-slate-800/80 flex items-center gap-3">
           <img
-            src={db.settings.logo_url || HALL_LOGO_SRC}
+            src={db.settings.logo_url || activeHall.logo_url || HALL_LOGO_SRC}
             alt={db.settings.hall_name}
             referrerPolicy="no-referrer"
             className="w-10 h-10 rounded-xl object-cover border border-amber-500/30 shrink-0"
@@ -143,14 +217,21 @@ export const Layout: React.FC<LayoutProps> = ({
                 key={item.id}
                 type="button"
                 onClick={() => onSelectTab(item.id)}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
+                className={`w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
                   active
                     ? 'bg-gradient-to-r from-cyan-500/20 to-violet-500/15 text-cyan-300 border border-cyan-500/35 shadow-[0_0_20px_-8px_rgba(6,182,212,0.5)]'
                     : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/50 border border-transparent'
                 }`}
               >
-                <span className="shrink-0">{item.icon}</span>
-                <span className="truncate">{tr(item.labelKey, lang)}</span>
+                <span className="flex items-center gap-3 min-w-0">
+                  <span className="shrink-0">{item.icon}</span>
+                  <span className="truncate">{tr(item.labelKey, lang)}</span>
+                </span>
+                {item.id === 'approvals' && pendingApprovalsCount > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold tabular-nums">
+                    {pendingApprovalsCount}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -174,8 +255,8 @@ export const Layout: React.FC<LayoutProps> = ({
               <div className="text-xs font-semibold text-slate-100 truncate">
                 {currentUser?.full_name}
               </div>
-              <div className="text-[11px] text-amber-400/90 capitalize truncate">
-                {currentUser?.role.replace('_', ' ')}
+              <div className="text-[11px] text-amber-400/90 truncate">
+                {translateRole(role, lang)}
               </div>
             </div>
             <button
@@ -192,18 +273,44 @@ export const Layout: React.FC<LayoutProps> = ({
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 pb-20 lg:pb-0">
-        {/* Top Bar (3 zones: Brand/Page Title — Search — Primary Action) */}
-        <header className="no-print sticky top-0 z-30 border-b border-slate-800/80 bg-white/90 dark:bg-[#060913]/90 backdrop-blur-xl px-4 lg:px-8 py-3 flex items-center justify-between gap-4">
+        {/* Top Bar */}
+        <header className="no-print sticky top-0 z-30 border-b border-slate-800/80 bg-white/90 dark:bg-[#060913]/90 backdrop-blur-xl px-4 lg:px-8 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
             <img
-              src={db.settings.logo_url || HALL_LOGO_SRC}
-              alt="M1"
+              src={db.settings.logo_url || activeHall.logo_url || HALL_LOGO_SRC}
+              alt="Hall"
               referrerPolicy="no-referrer"
               className="lg:hidden w-8 h-8 rounded-lg object-cover border border-amber-500/30 shrink-0"
             />
             <span className="text-base lg:text-lg font-bold text-white whitespace-nowrap shrink-0 truncate">
               {tr(permittedNav.find((n) => n.id === activeTab)?.labelKey || 'dashboard', lang)}
             </span>
+
+            {/* Hall Switcher (Super Admin) or Locked Hall Indicator (Admin / Manager) */}
+            {role === 'super_admin' ? (
+              <div className="hidden md:flex items-center gap-1.5 ms-2 px-2.5 py-1 rounded-xl border border-cyan-500/35 bg-cyan-500/10">
+                <Building2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <select
+                  aria-label={tr('activeHall', lang)}
+                  value={activeHallId}
+                  onChange={(e) => setActiveHallId(e.target.value)}
+                  className="bg-transparent text-xs font-semibold text-cyan-200 focus:outline-none cursor-pointer"
+                >
+                  {db.halls.map((h) => (
+                    <option key={h.id} value={h.id} className="bg-slate-900 text-white">
+                      {lang === 'ur' ? h.name_ur : h.name} ({h.booking_code_prefix})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="hidden md:flex items-center gap-1.5 ms-2 px-2.5 py-1 rounded-xl border border-slate-800 bg-slate-900/70 text-xs text-slate-300">
+                <Building2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span className="truncate max-w-[140px]">
+                  {lang === 'ur' ? activeHall.name_ur : activeHall.name}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Global Search */}
@@ -283,8 +390,24 @@ export const Layout: React.FC<LayoutProps> = ({
           </div>
         </header>
 
-        {/* Mobile search bar */}
-        <div className="no-print sm:hidden px-4 pt-3">
+        {/* Mobile Hall Switcher + search bar */}
+        <div className="no-print sm:hidden px-4 pt-3 space-y-2">
+          {role === 'super_admin' && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-cyan-500/35 bg-cyan-500/10">
+              <Building2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+              <select
+                value={activeHallId}
+                onChange={(e) => setActiveHallId(e.target.value)}
+                className="flex-1 bg-transparent text-xs font-semibold text-cyan-200 focus:outline-none"
+              >
+                {db.halls.map((h) => (
+                  <option key={h.id} value={h.id} className="bg-slate-900 text-white">
+                    {lang === 'ur' ? h.name_ur : h.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute top-2.5 left-3 rtl:left-auto rtl:right-3" />
             <input
@@ -366,7 +489,9 @@ export const Layout: React.FC<LayoutProps> = ({
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm font-bold text-white">{currentUser?.full_name}</div>
-                <div className="text-xs text-amber-400 capitalize">{currentUser?.role.replace('_', ' ')}</div>
+                <div className="text-xs text-amber-400">
+                  {translateRole(role, lang)} · {activeHall.name}
+                </div>
               </div>
               <button
                 type="button"
@@ -385,14 +510,21 @@ export const Layout: React.FC<LayoutProps> = ({
                     onSelectTab(item.id);
                     setMoreDrawerOpen(false);
                   }}
-                  className={`flex items-center gap-2.5 px-3 py-3 rounded-xl border text-xs font-medium ${
+                  className={`flex items-center justify-between gap-2 px-3 py-3 rounded-xl border text-xs font-medium ${
                     activeTab === item.id
                       ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300'
                       : 'border-slate-800 bg-slate-900/60 text-slate-300'
                   }`}
                 >
-                  {item.icon}
-                  <span className="truncate">{tr(item.labelKey, lang)}</span>
+                  <span className="flex items-center gap-2 min-w-0">
+                    {item.icon}
+                    <span className="truncate">{tr(item.labelKey, lang)}</span>
+                  </span>
+                  {item.id === 'approvals' && pendingApprovalsCount > 0 && (
+                    <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-bold">
+                      {pendingApprovalsCount}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>

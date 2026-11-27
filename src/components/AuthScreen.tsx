@@ -22,7 +22,7 @@ export const AuthScreen: React.FC = () => {
     clearAuthError,
     loading,
   } = useApp();
-  const [email, setEmail] = useState('admin@marquee1.pk');
+  const [email, setEmail] = useState('superadmin@marquee1.pk');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [copiedSql, setCopiedSql] = useState(false);
@@ -30,7 +30,7 @@ export const AuthScreen: React.FC = () => {
   const visibleError = authError || error;
 
   const missingProfileSql = missingProfileInfo
-    ? `INSERT INTO public.profiles (id, full_name, email, phone, role, is_active)\nVALUES ('${missingProfileInfo.uid}', '${(missingProfileInfo.email.split('@')[0] || 'Super Admin').replace(/'/g, "''")}', '${missingProfileInfo.email.replace(/'/g, "''")}', '', 'super_admin', true)\nON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role, is_active = true;`
+    ? `INSERT INTO public.profiles (id, hall_id, full_name, email, phone, role, is_active)\nVALUES ('${missingProfileInfo.uid}', '11111111-1111-4111-8111-111111111101', '${(missingProfileInfo.email.split('@')[0] || 'Super Admin').replace(/'/g, "''")}', '${missingProfileInfo.email.replace(/'/g, "''")}', '', 'super_admin', true)\nON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role, is_active = true;`
     : '';
 
   const handleCopySql = async () => {
@@ -59,25 +59,25 @@ export const AuthScreen: React.FC = () => {
       role: 'super_admin',
       label: 'Super Admin',
       labelUr: 'سپر ایڈمن',
-      desc: 'Full control, users, catalog, settings, audit & recycle bin',
+      desc: 'Full multi-hall control, hall switcher, all users, settings, recycle bin & audit log',
       icon: <ShieldCheck className="w-4 h-4 text-amber-400" />,
       accent: 'hover:border-amber-500/50',
     },
     {
-      role: 'management',
-      label: 'Management',
-      labelUr: 'مینجمنٹ',
-      desc: 'Bookings, floor calendar, customers & crate entry',
-      icon: <Users className="w-4 h-4 text-cyan-400" />,
-      accent: 'hover:border-cyan-500/50',
-    },
-    {
-      role: 'finance',
-      label: 'Finance',
-      labelUr: 'فنانس',
-      desc: 'Payments, installments, expenses, payroll, invoices & reports',
+      role: 'admin',
+      label: 'Hall Admin',
+      labelUr: 'ہال ایڈمن',
+      desc: 'Own hall full access: expenses, staff & payroll, approvals, daily closing reconciliation, reports & managers',
       icon: <Wallet className="w-4 h-4 text-violet-400" />,
       accent: 'hover:border-violet-500/50',
+    },
+    {
+      role: 'manager',
+      label: 'Hall Manager',
+      labelUr: 'ہال مینیجر',
+      desc: 'Own hall operations: bookings, calendar, customers, payments, crates, attendance & daily cash closing',
+      icon: <Users className="w-4 h-4 text-cyan-400" />,
+      accent: 'hover:border-cyan-500/50',
     },
   ];
 

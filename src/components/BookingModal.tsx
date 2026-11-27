@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Ban, CalendarClock, Check, Plus, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Ban, CalendarClock, Check, CheckCircle2, Plus, ShieldAlert, Trash2, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { tr, translateFloor } from '../i18n/translations';
 import {
@@ -36,8 +36,8 @@ interface BookingModalProps {
   onSaved?: (saved: Booking) => void;
 }
 
-type DraftItem = Omit<BookingItem, 'booking_id' | 'deleted_at'>;
-type DraftInstallment = Omit<InstallmentSchedule, 'booking_id' | 'deleted_at'>;
+type DraftItem = Omit<BookingItem, 'booking_id' | 'hall_id' | 'deleted_at'>;
+type DraftInstallment = Omit<InstallmentSchedule, 'booking_id' | 'hall_id' | 'deleted_at'>;
 
 function isCrateItem(it: { is_crate_service?: boolean; item_name: string }): boolean {
   return Boolean(it.is_crate_service) || it.item_name.toLowerCase().includes('cold drink');
@@ -49,8 +49,16 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   onClose,
   onSaved,
 }) => {
-  const { db, lang, currentUser, saveBooking } = useApp();
-  const readOnly = currentUser?.role === 'finance';
+  const { db, lang, currentUser, can, saveBooking, submitApprovalRequest } = useApp();
+  const role = currentUser?.role || 'manager';
+  const isManager = role === 'manager';
+  const readOnly = !currentUser || !can('bookings', 'edit');
+  const canSeeExpensesProfit = can('expenses', 'view') || can('reports', 'view');
+
+  const activeCustomers = useMemo(
+    () => db.customers.filter((c) => !c.deleted_at).sort((a, b) => a.full_name.localeCompare(b.full_name)),
+    [db.customers]
+  );
 
   const defaultPkgItems = useMemo(
     () => db.chargesCatalog.filter((c) => !c.deleted_at && c.is_default_package),
@@ -66,6 +74,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const initialFloors = booking?.floors || (['First'] as FloorName[]);
   const initialSuggested = getSuggestedHallRent(initialFloors, initialDateVal, db.settings);
 
+  const [customerId, setCustomerId] = useState<string | null>(booking?.customer_id || null);
   const [customerName, setCustomerName] = useState(booking?.customer_name || '');
   const [customerAddress, setCustomerAddress] = useState(booking?.customer_address || '');
   const [customerPhone, setCustomerPhone] = useState(booking?.customer_phone || '');
@@ -82,6 +91,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [rentEditedManually, setRentEditedManually] = useState<boolean>(Boolean(booking));
   const [status, setStatus] = useState<BookingStatus>(booking?.status || 'Confirmed');
   const [notes, setNotes] = useState(booking?.notes || '');
+  const [inspectionNotes, setInspectionNotes] = useState(booking?.inspection_notes || '');
+  const [approvalNotice, setApprovalNotice] = useState<string[] | null>(null);
 
   // Date reschedule fields when changing an existing booking's event_date
   const dateChangedFromOriginal = Boolean(booking && eventDate !== booking.event_date);
@@ -117,7 +128,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     if (booking) {
       return db.bookingItems
         .filter((i) => i.booking_id === booking.id && !i.deleted_at)
-        .map(({ booking_id: _b, deleted_at: _d, ...rest }) => rest);
+        .map(({ booking_id: _b, deleted_at: _d, hall_id: _h, ...rest }) => rest);
     }
     return defaultPkgItems.map((pkg, idx) => ({
       id: `new-pkg-${idx}`,
@@ -137,7 +148,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     if (booking) {
       return db.installments
         .filter((ins) => ins.booking_id === booking.id && !ins.deleted_at)
-        .map(({ booking_id: _b, deleted_at: _d, ...rest }) => rest);
+        .map(({ booking_id: _b, deleted_at: _d, hall_id: _h, ...rest }) => rest);
     }
     return [];
   });
@@ -329,10 +340,26 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       return;
     }
 
+    const discountRequestedByManager =
+      isManager &&
+      discountValue > 0 &&
+      (!booking ||
+        discountValue !== (booking.discount_value ?? 0) ||
+        discountType !== (booking.discount_type || 'fixed'));
+
+    const lateOverrideRequestedByManager =
+      isManager &&
+      lateChargeOverridden &&
+      (!booking || effectiveLateCharge !== (booking.late_charge_amount ?? 0));
+
+    const rescheduleFeeRequestedByManager =
+      isManager && dateChangedFromOriginal && pendingRescheduleFee > 0;
+
     setSaving(true);
     const res = await saveBooking(
       {
         id: booking?.id,
+        customer_id: customerId,
         customer_name: customerName.trim(),
         customer_address: customerAddress.trim(),
         customer_phone: customerPhone.trim(),
@@ -346,6 +373,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         guests_count: Number(guestsCount) || 0,
         hall_rent: Number(hallRent) || 0,
         notes: notes.trim(),
+        inspection_notes: inspectionNotes.trim(),
         status,
         crates_ordered: hasCrateLineItem ? Number(cratesOrdered) || 0 : 0,
         crates_used: hasCrateLineItem ? Number(cratesUsed) || 0 : 0,
@@ -354,29 +382,107 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         crate_handling_deduction_per_crate: Number(crateHandling) || 0,
         crate_credit_amount: hasCrateLineItem ? crateCalc.netCreditReversed : 0,
         actual_end_time: actualEndTime || null,
-        late_charge_method: lateChargeMethod,
-        late_charge_value: Number(lateChargeValue) || 0,
-        late_charge_amount: effectiveLateCharge,
-        late_charge_overridden: lateChargeOverridden,
-        discount_type: discountType,
-        discount_value: Number(discountValue) || 0,
-        discount_amount: discountAmount,
-        discount_reason: discountReason.trim(),
+        late_charge_method: lateOverrideRequestedByManager
+          ? booking?.late_charge_method || 'none'
+          : lateChargeMethod,
+        late_charge_value: lateOverrideRequestedByManager
+          ? booking?.late_charge_value ?? 0
+          : Number(lateChargeValue) || 0,
+        late_charge_amount: lateOverrideRequestedByManager
+          ? booking?.late_charge_amount ?? 0
+          : effectiveLateCharge,
+        late_charge_overridden: lateOverrideRequestedByManager
+          ? Boolean(booking?.late_charge_overridden)
+          : lateChargeOverridden,
+        discount_type: discountRequestedByManager
+          ? booking?.discount_type || 'fixed'
+          : discountType,
+        discount_value: discountRequestedByManager
+          ? booking?.discount_value ?? 0
+          : Number(discountValue) || 0,
+        discount_amount: discountRequestedByManager
+          ? booking?.discount_amount ?? 0
+          : discountAmount,
+        discount_reason: discountRequestedByManager
+          ? booking?.discount_reason || ''
+          : discountReason.trim(),
         tax_percent: taxPercent,
       },
       effectiveItems,
       installments,
       dateChangedFromOriginal
-        ? { reason: rescheduleReason.trim() || 'Event date updated', fee: pendingRescheduleFee }
+        ? {
+            reason: rescheduleReason.trim() || 'Event date updated',
+            fee: rescheduleFeeRequestedByManager ? 0 : pendingRescheduleFee,
+          }
         : undefined
     );
-    setSaving(false);
 
     if (!res.ok) {
+      setSaving(false);
       setValidationError(`${tr('conflictPrefix', lang)} ${res.error}`);
       return;
     }
+
+    const queuedApprovals: string[] = [];
+    if (res.booking) {
+      if (discountRequestedByManager) {
+        await submitApprovalRequest({
+          booking_id: res.booking.id,
+          booking_code: res.booking.booking_code,
+          customer_name: res.booking.customer_name,
+          request_type: 'discount',
+          payload: {
+            discount_type: discountType,
+            discount_value: Number(discountValue) || 0,
+            discount_amount: discountAmount,
+            discount_reason: discountReason.trim(),
+          },
+          reason: discountReason.trim() || 'Manager requested special discount',
+        });
+        queuedApprovals.push(`Discount (${formatPKR(discountAmount)})`);
+      }
+
+      if (lateOverrideRequestedByManager) {
+        await submitApprovalRequest({
+          booking_id: res.booking.id,
+          booking_code: res.booking.booking_code,
+          customer_name: res.booking.customer_name,
+          request_type: 'late_charge_override',
+          payload: {
+            late_charge_method: lateChargeMethod,
+            late_charge_value: Number(lateChargeValue) || 0,
+            late_charge_amount: effectiveLateCharge,
+          },
+          reason: 'Manager requested late charge override',
+        });
+        queuedApprovals.push(`Late Charge Override (${formatPKR(effectiveLateCharge)})`);
+      }
+
+      if (rescheduleFeeRequestedByManager) {
+        await submitApprovalRequest({
+          booking_id: res.booking.id,
+          booking_code: res.booking.booking_code,
+          customer_name: res.booking.customer_name,
+          request_type: 'reschedule_fee',
+          payload: {
+            old_date: booking?.event_date || '',
+            new_date: eventDate,
+            fee: pendingRescheduleFee,
+            reason: rescheduleReason.trim() || 'Event date rescheduled',
+          },
+          reason: rescheduleReason.trim() || 'Reschedule fee request',
+        });
+        queuedApprovals.push(`Reschedule Fee (${formatPKR(pendingRescheduleFee)})`);
+      }
+    }
+
+    setSaving(false);
     if (res.booking && onSaved) onSaved(res.booking);
+    if (queuedApprovals.length > 0) {
+      setApprovalNotice(queuedApprovals);
+      return;
+    }
     onClose();
   };
 
@@ -404,6 +510,32 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         </div>
 
         {/* Form Body */}
+        {approvalNotice ? (
+          <div className="p-8 text-center space-y-4">
+            <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto" />
+            <h3 className="text-base font-bold text-white">Booking Saved &amp; Approval Request Submitted</h3>
+            <p className="text-xs text-slate-300 max-w-md mx-auto leading-relaxed">
+              The booking has been saved. Because managers require Hall Admin approval for financial adjustments, the following request(s) were sent to the <strong>Approvals</strong> queue:
+            </p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {approvalNotice.map((item) => (
+                <span
+                  key={item}
+                  className="px-3 py-1 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-300 text-xs font-semibold"
+                >
+                  {item}
+                </span>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold"
+            >
+              Done
+            </button>
+          </div>
+        ) : (
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
           {booking?.status === 'Cancelled' && booking.cancellation_details && (
             <div className="p-4 rounded-xl border border-rose-500/40 bg-rose-950/25 text-xs space-y-1.5">
@@ -443,7 +575,38 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
           {/* Customer Details */}
           <div>
-            <h3 className="text-xs font-semibold text-cyan-300 mb-3">Customer Information</h3>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <h3 className="text-xs font-semibold text-cyan-300">Customer Information</h3>
+              {!readOnly && activeCustomers.length > 0 && (
+                <select
+                  value={customerId || ''}
+                  onChange={(e) => {
+                    const cid = e.target.value;
+                    if (!cid) {
+                      setCustomerId(null);
+                      return;
+                    }
+                    const found = activeCustomers.find((c) => c.id === cid);
+                    if (found) {
+                      setCustomerId(found.id);
+                      setCustomerName(found.full_name);
+                      setCustomerPhone(found.phone);
+                      setCustomerNic(found.nic);
+                      setCustomerAddress(found.address);
+                      setCustomerEmail(found.email);
+                    }
+                  }}
+                  className="bg-slate-950/70 border border-slate-800 rounded-lg px-2.5 py-1 text-[11px] text-slate-200 max-w-xs"
+                >
+                  <option value="">New / Custom Customer Details...</option>
+                  {activeCustomers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.full_name} ({c.phone})
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs text-slate-300 mb-1">{tr('customerName', lang)} *</label>
@@ -822,13 +985,15 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                           </td>
                           {!readOnly && (
                             <td className="py-2 px-3 text-end">
-                              <button
-                                type="button"
-                                onClick={() => setItems((prev) => prev.filter((_, rIdx) => rIdx !== idx))}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              {(!isManager || it.id.startsWith('new-')) && (
+                                <button
+                                  type="button"
+                                  onClick={() => setItems((prev) => prev.filter((_, rIdx) => rIdx !== idx))}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                             </td>
                           )}
                         </tr>
@@ -1028,9 +1193,17 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           <div className="pt-4 border-t border-slate-800/80 space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-semibold text-cyan-300">Discount &amp; Final Agreed Total</h3>
-              <span className="text-[11px] text-slate-400 tabular-nums">
-                {tr('standardTotal', lang)}: {formatPKR(standardTotal)}
-              </span>
+              <div className="flex items-center gap-3">
+                {isManager && (
+                  <span className="text-[11px] text-amber-300 flex items-center gap-1">
+                    <ShieldAlert className="w-3 h-3" />
+                    <span>New/changed discounts require Admin approval</span>
+                  </span>
+                )}
+                <span className="text-[11px] text-slate-400 tabular-nums">
+                  {tr('standardTotal', lang)}: {formatPKR(standardTotal)}
+                </span>
+              </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               <div>
@@ -1128,7 +1301,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                         }
                         className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white tabular-nums"
                       />
-                      {!readOnly && (
+                      {!readOnly && (!isManager || ins.id.startsWith('new-')) && (
                         <button
                           type="button"
                           onClick={() => setInstallments((prev) => prev.filter((_, rIdx) => rIdx !== idx))}
@@ -1144,33 +1317,35 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             )}
           </div>
 
-          {/* Linked Expenses & Profit (Existing Booking) + Reschedule History */}
+          {/* Linked Expenses & Profit (Admin/Super Admin only) + Reschedule History */}
           {booking && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-4 border-t border-slate-800/80 text-xs">
-              <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-semibold text-white">Linked Vendor &amp; Event Expenses</h4>
-                  <span className="font-bold tabular-nums text-rose-300">{formatPKR(linkedExpensesTotal)}</span>
-                </div>
-                {linkedExpenses.length > 0 ? (
-                  <div className="space-y-1.5 max-h-28 overflow-y-auto">
-                    {linkedExpenses.map((ex) => (
-                      <div key={ex.id} className="flex justify-between text-[11px] text-slate-300 border-b border-slate-800/60 pb-1">
-                        <span>{ex.category_name} · {ex.payee}</span>
-                        <span className="tabular-nums font-semibold">{formatPKR(ex.amount)}</span>
-                      </div>
-                    ))}
+            <div className={`grid grid-cols-1 ${canSeeExpensesProfit ? 'lg:grid-cols-2' : ''} gap-4 pt-4 border-t border-slate-800/80 text-xs`}>
+              {canSeeExpensesProfit && (
+                <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-semibold text-white">Linked Vendor &amp; Event Expenses</h4>
+                    <span className="font-bold tabular-nums text-rose-300">{formatPKR(linkedExpensesTotal)}</span>
                   </div>
-                ) : (
-                  <p className="text-[11px] text-slate-500">No vendor expenses linked to this booking yet (link from Expenses screen).</p>
-                )}
-                <div className="pt-1 flex justify-between font-bold border-t border-slate-800">
-                  <span className="text-slate-300">{tr('bookingProfit', lang)}</span>
-                  <span className={`tabular-nums ${bookingProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {formatPKR(bookingProfit)}
-                  </span>
+                  {linkedExpenses.length > 0 ? (
+                    <div className="space-y-1.5 max-h-28 overflow-y-auto">
+                      {linkedExpenses.map((ex) => (
+                        <div key={ex.id} className="flex justify-between text-[11px] text-slate-300 border-b border-slate-800/60 pb-1">
+                          <span>{ex.category_name} · {ex.payee}</span>
+                          <span className="tabular-nums font-semibold">{formatPKR(ex.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-slate-500">No vendor expenses linked to this booking yet (link from Expenses screen).</p>
+                  )}
+                  <div className="pt-1 flex justify-between font-bold border-t border-slate-800">
+                    <span className="text-slate-300">{tr('bookingProfit', lang)}</span>
+                    <span className={`tabular-nums ${bookingProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {formatPKR(bookingProfit)}
+                    </span>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 space-y-2">
                 <h4 className="font-semibold text-white flex items-center gap-1.5">
@@ -1195,16 +1370,29 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             </div>
           )}
 
-          {/* Notes */}
-          <div>
-            <label className="block text-xs text-slate-300 mb-1">{tr('notes', lang)}</label>
-            <textarea
-              rows={2}
-              disabled={readOnly}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
-            />
+          {/* Notes & Hall Inspection Notes */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs text-slate-300 mb-1">{tr('notes', lang)}</label>
+              <textarea
+                rows={2}
+                disabled={readOnly}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-300 mb-1">{tr('inspectionNotes', lang)}</label>
+              <textarea
+                rows={2}
+                disabled={readOnly}
+                value={inspectionNotes}
+                onChange={(e) => setInspectionNotes(e.target.value)}
+                placeholder="Pre/post-event hall condition, AC/generator check, damage notes..."
+                className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
+              />
+            </div>
           </div>
 
           {/* Summary Bar */}
@@ -1273,6 +1461,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             )}
           </div>
         </form>
+        )}
       </div>
     </div>
   );

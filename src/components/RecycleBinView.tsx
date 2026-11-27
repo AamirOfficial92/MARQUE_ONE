@@ -5,9 +5,11 @@ import { tr } from '../i18n/translations';
 import { formatDateDisplay, formatPKR } from '../utils/formatters';
 
 export const RecycleBinView: React.FC = () => {
-  const { db, lang, restoreRecord } = useApp();
+  const { db, lang, can, restoreRecord } = useApp();
+  const canRestore = can('recycle_bin', 'edit');
 
   const deletedBookings = db.bookings.filter((b) => b.deleted_at);
+  const deletedCustomers = db.customers.filter((c) => c.deleted_at);
   const deletedPayments = db.payments.filter((p) => p.deleted_at);
   const deletedExpenses = db.expenses.filter((e) => e.deleted_at);
   const deletedCharges = db.chargesCatalog.filter((c) => c.deleted_at);
@@ -15,6 +17,7 @@ export const RecycleBinView: React.FC = () => {
 
   const totalDeleted =
     deletedBookings.length +
+    deletedCustomers.length +
     deletedPayments.length +
     deletedExpenses.length +
     deletedCharges.length +
@@ -29,7 +32,7 @@ export const RecycleBinView: React.FC = () => {
             <span>{tr('recycleBin', lang)}</span>
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            All deletions are soft-deleted. Only Super Admin can view and restore records.
+            All deletions are soft-deleted. Users with Recycle Bin permission can inspect and restore archived records.
           </p>
         </div>
         <span className="text-xs font-semibold text-cyan-300 tabular-nums">{totalDeleted} archived items</span>
@@ -55,14 +58,16 @@ export const RecycleBinView: React.FC = () => {
                     Event: {formatDateDisplay(b.event_date, lang)} · Deleted: {formatDateDisplay(b.deleted_at || '', lang)}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => restoreRecord('booking', b.id)}
-                  className="px-3 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/15 text-emerald-300 font-semibold flex items-center gap-1.5"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>{tr('restore', lang)}</span>
-                </button>
+                {canRestore && (
+                  <button
+                    type="button"
+                    onClick={() => restoreRecord('booking', b.id)}
+                    className="px-3 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/15 text-emerald-300 font-semibold flex items-center gap-1.5"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>{tr('restore', lang)}</span>
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -83,14 +88,16 @@ export const RecycleBinView: React.FC = () => {
                     {p.mode} · {formatDateDisplay(p.payment_date, lang)}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => restoreRecord('payment', p.id)}
-                  className="px-3 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/15 text-emerald-300 font-semibold flex items-center gap-1.5"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>{tr('restore', lang)}</span>
-                </button>
+                {canRestore && (
+                  <button
+                    type="button"
+                    onClick={() => restoreRecord('payment', p.id)}
+                    className="px-3 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/15 text-emerald-300 font-semibold flex items-center gap-1.5"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>{tr('restore', lang)}</span>
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -111,14 +118,16 @@ export const RecycleBinView: React.FC = () => {
                     {e.category_name} · {formatDateDisplay(e.expense_date, lang)}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => restoreRecord('expense', e.id)}
-                  className="px-3 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/15 text-emerald-300 font-semibold flex items-center gap-1.5"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>{tr('restore', lang)}</span>
-                </button>
+                {canRestore && (
+                  <button
+                    type="button"
+                    onClick={() => restoreRecord('expense', e.id)}
+                    className="px-3 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/15 text-emerald-300 font-semibold flex items-center gap-1.5"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>{tr('restore', lang)}</span>
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -135,14 +144,16 @@ export const RecycleBinView: React.FC = () => {
                   <div className="font-bold text-white">{c.name_en}</div>
                   <div className="text-slate-400 tabular-nums">{formatPKR(c.default_rate)}</div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => restoreRecord('charge', c.id)}
-                  className="px-3 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/15 text-emerald-300 font-semibold flex items-center gap-1.5"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>{tr('restore', lang)}</span>
-                </button>
+                {canRestore && (
+                  <button
+                    type="button"
+                    onClick={() => restoreRecord('charge', c.id)}
+                    className="px-3 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/15 text-emerald-300 font-semibold flex items-center gap-1.5"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>{tr('restore', lang)}</span>
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -159,14 +170,43 @@ export const RecycleBinView: React.FC = () => {
                   <div className="font-bold text-white">{emp.full_name}</div>
                   <div className="text-slate-400">{emp.role_title}</div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => restoreRecord('employee', emp.id)}
-                  className="px-3 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/15 text-emerald-300 font-semibold flex items-center gap-1.5"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>{tr('restore', lang)}</span>
-                </button>
+                {canRestore && (
+                  <button
+                    type="button"
+                    onClick={() => restoreRecord('employee', emp.id)}
+                    className="px-3 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/15 text-emerald-300 font-semibold flex items-center gap-1.5"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>{tr('restore', lang)}</span>
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {deletedCustomers.length > 0 && (
+        <div className="glass-panel rounded-2xl p-5 space-y-3">
+          <h3 className="text-sm font-bold text-white">Deleted Customers</h3>
+          <div className="divide-y divide-slate-800/70">
+            {deletedCustomers.map((c) => (
+              <div key={c.id} className="py-3 flex items-center justify-between gap-4 text-xs">
+                <div>
+                  <div className="font-bold text-white">{c.full_name}</div>
+                  <div className="text-slate-400 tabular-nums">
+                    {c.phone} · {c.nic || 'No CNIC'}
+                  </div>
+                </div>
+                {canRestore && (
+                  <button
+                    type="button"
+                    onClick={() => restoreRecord('customer', c.id)}
+                    className="px-3 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/15 text-emerald-300 font-semibold flex items-center gap-1.5"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>{tr('restore', lang)}</span>
+                  </button>
+                )}
               </div>
             ))}
           </div>

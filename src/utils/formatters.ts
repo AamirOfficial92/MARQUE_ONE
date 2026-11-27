@@ -376,6 +376,7 @@ export function doFloorsOverlap(a: FloorName[], b: FloorName[]): boolean {
 export function findBookingConflict(
   candidate: {
     id?: string;
+    hall_id?: string;
     event_date: string;
     start_time: string;
     end_time: string;
@@ -397,6 +398,7 @@ export function findBookingConflict(
 
   for (const b of existingBookings) {
     if (b.id === candidate.id) continue;
+    if (candidate.hall_id && b.hall_id && b.hall_id !== candidate.hall_id) continue;
     if (b.deleted_at || b.status === 'Cancelled') continue;
     if (!doFloorsOverlap(candidate.floors, b.floors)) continue;
 

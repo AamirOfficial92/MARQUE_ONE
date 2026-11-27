@@ -1,24 +1,37 @@
-import React, { useState } from 'react';
-import { CalendarRange, Database, Download, FileSpreadsheet, Monitor, Moon, Plus, RotateCcw, Save, Sun, Trash2 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Building2, CalendarRange, Database, Download, Edit3, FileSpreadsheet, Monitor, Moon, Plus, RotateCcw, Save, Sun, Trash2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useApp } from '../context/AppContext';
+import { HALL_LOGO_SRC } from '../data/seedData';
 import { tr } from '../i18n/translations';
-import { FloorName, FloorRatePair, HallSettings, RentSeasonRule } from '../types';
+import { FloorName, FloorRatePair, Hall, HallSettings, RentSeasonRule } from '../types';
 import { formatPKR } from '../utils/formatters';
 
-type SettingsTab = 'hall' | 'pricing' | 'catalog' | 'events' | 'backup';
+type SettingsTab = 'hall' | 'pricing' | 'catalog' | 'events' | 'halls' | 'backup';
+
+interface SettingsViewProps {
+  initialTab?: SettingsTab;
+  catalogOnly?: boolean;
+}
 
 const FLOOR_LIST: FloorName[] = ['First', 'Second', 'Third', 'Full Hall'];
 
-export const SettingsView: React.FC = () => {
+export const SettingsView: React.FC<SettingsViewProps> = ({
+  initialTab,
+  catalogOnly = false,
+}) => {
   const {
     db,
+    rawDb,
+    currentUser,
+    can,
     lang,
     theme,
     themePreferenceSource,
     setTheme,
     resetThemeToSystem,
     supabaseLive,
+    saveHall,
     updateSettings,
     saveChargeCategory,
     saveChargeItem,
@@ -27,9 +40,71 @@ export const SettingsView: React.FC = () => {
     resetDemoDatabase,
   } = useApp();
 
-  const [tab, setTab] = useState<SettingsTab>('hall');
+  const isSuperAdmin = currentUser?.role === 'super_admin';
+  const canViewSettings = can('settings', 'view');
+  const canEditSettings = can('settings', 'edit');
+  const canViewCatalog = can('catalog', 'view');
+  const canEditCatalog = can('catalog', 'edit');
+  const canDeleteCatalog = can('catalog', 'delete');
+  const canViewBackup = can('backup_import', 'view');
+
+  const visibleTabs: Array<{ id: SettingsTab; label: string }> = catalogOnly
+    ? canViewCatalog
+      ? [{ id: 'catalog', label: 'Charges & Packages Catalog' }]
+      : []
+    : [
+        ...(canViewSettings
+          ? [
+              { id: 'hall' as SettingsTab, label: 'Hall & Invoice Policy' },
+              { id: 'pricing' as SettingsTab, label: 'Suggested Rent & Seasons' },
+            ]
+          : []),
+        ...(canViewCatalog
+          ? [{ id: 'catalog' as SettingsTab, label: 'Charges & Packages Catalog' }]
+          : []),
+        ...(canViewSettings
+          ? [{ id: 'events' as SettingsTab, label: 'Event Types' }]
+          : []),
+        ...(isSuperAdmin && canViewSettings
+          ? [{ id: 'halls' as SettingsTab, label: 'Halls Management' }]
+          : []),
+        ...(isSuperAdmin && canViewBackup
+          ? [{ id: 'backup' as SettingsTab, label: 'Full Backup' }]
+          : []),
+      ];
+
+  const defaultTab: SettingsTab =
+    initialTab && visibleTabs.some((t) => t.id === initialTab)
+      ? initialTab
+      : visibleTabs[0]?.id || 'hall';
+
+  const [tab, setTab] = useState<SettingsTab>(defaultTab);
   const [form, setForm] = useState<HallSettings>(db.settings);
   const [savedNotice, setSavedNotice] = useState(false);
+
+  // Hall creation/editing (super_admin only)
+  const [editingHallId, setEditingHallId] = useState<string | null>(null);
+  const [hallName, setHallName] = useState('');
+  const [hallNameUr, setHallNameUr] = useState('');
+  const [hallAddress, setHallAddress] = useState('');
+  const [hallAddressUr, setHallAddressUr] = useState('');
+  const [hallPhone, setHallPhone] = useState('');
+  const [hallEmail, setHallEmail] = useState('');
+  const [hallLogo, setHallLogo] = useState('');
+  const [hallBookingPrefix, setHallBookingPrefix] = useState('MQ2');
+  const [hallInvoicePrefix, setHallInvoicePrefix] = useState('INV2');
+  const [hallActive, setHallActive] = useState(true);
+  const [hallMsg, setHallMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    setForm(db.settings);
+  }, [db.settings]);
+
+  useEffect(() => {
+    if (visibleTabs.length > 0 && !visibleTabs.some((t) => t.id === tab)) {
+      setTab(visibleTabs[0].id);
+    }
+  }, [visibleTabs, tab]);
 
   // Catalog Category & Item creation
   const activeCategories = db.chargeCategories.filter((c) => !c.deleted_at);
@@ -106,56 +181,114 @@ export const SettingsView: React.FC = () => {
     }));
   };
 
+  useEffect(() => {
+    if (!activeCategories.some((c) => c.id === chargeCatId)) {
+      setChargeCatId(activeCategories[0]?.id || '');
+    }
+  }, [activeCategories, chargeCatId]);
+
+  const startEditHall = (h: Hall) => {
+    setEditingHallId(h.id);
+    setHallName(h.name);
+    setHallNameUr(h.name_ur);
+    setHallAddress(h.address);
+    setHallAddressUr(h.address_ur);
+    setHallPhone(h.phone);
+    setHallEmail(h.email);
+    setHallLogo(h.logo_url);
+    setHallBookingPrefix(h.booking_code_prefix);
+    setHallInvoicePrefix(h.invoice_prefix);
+    setHallActive(h.is_active);
+    setHallMsg(null);
+  };
+
+  const resetHallForm = () => {
+    setEditingHallId(null);
+    setHallName('');
+    setHallNameUr('');
+    setHallAddress('');
+    setHallAddressUr('');
+    setHallPhone('');
+    setHallEmail('');
+    setHallLogo('');
+    setHallBookingPrefix(`MQ${db.halls.length + 1}`);
+    setHallInvoicePrefix(`INV${db.halls.length + 1}`);
+    setHallActive(true);
+  };
+
+  const handleSaveHallSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setHallMsg(null);
+    if (!hallName.trim()) return;
+    const res = await saveHall({
+      id: editingHallId || undefined,
+      name: hallName.trim(),
+      name_ur: hallNameUr.trim() || hallName.trim(),
+      address: hallAddress.trim(),
+      address_ur: hallAddressUr.trim() || hallAddress.trim(),
+      phone: hallPhone.trim(),
+      email: hallEmail.trim(),
+      logo_url: hallLogo.trim() || HALL_LOGO_SRC,
+      booking_code_prefix: hallBookingPrefix.trim().toUpperCase() || 'MQ',
+      invoice_prefix: hallInvoicePrefix.trim().toUpperCase() || 'INV',
+      is_active: hallActive,
+    });
+    if (!res.ok) {
+      setHallMsg(res.error || 'Could not save hall.');
+      return;
+    }
+    setHallMsg(editingHallId ? 'Hall updated.' : 'New hall created with default catalog & event types.');
+    resetHallForm();
+  };
+
   const handleDownloadJsonBackup = () => {
-    const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(rawDb, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `marquee1-full-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `marquee-all-halls-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
   const handleDownloadExcelBackup = () => {
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(db.bookings), 'Bookings');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(db.bookingItems), 'BookingItems');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(db.payments), 'Payments');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(db.expenses), 'Expenses');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(db.employees), 'Employees');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(db.attendance), 'Attendance');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(db.advances), 'Advances');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(db.chargesCatalog), 'ChargesCatalog');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(db.auditLogs), 'AuditLogs');
-    XLSX.writeFile(wb, `marquee1-full-backup-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rawDb.halls), 'Halls');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rawDb.customers), 'Customers');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rawDb.bookings), 'Bookings');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rawDb.bookingItems), 'BookingItems');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rawDb.payments), 'Payments');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rawDb.dailyClosings), 'DailyClosings');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rawDb.approvalRequests), 'ApprovalRequests');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rawDb.expenses), 'Expenses');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rawDb.employees), 'Employees');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rawDb.attendance), 'Attendance');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rawDb.advances), 'Advances');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rawDb.chargesCatalog), 'ChargesCatalog');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rawDb.auditLogs), 'AuditLogs');
+    XLSX.writeFile(wb, `marquee-all-halls-backup-${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-slate-900/90 border border-slate-800 w-fit">
-        {(
-          [
-            { id: 'hall', label: 'Hall & Invoice Policy' },
-            { id: 'pricing', label: 'Suggested Rent & Seasons' },
-            { id: 'catalog', label: 'Charges & Packages Catalog' },
-            { id: 'events', label: 'Event Types' },
-            { id: 'backup', label: 'Full Backup' },
-          ] as Array<{ id: SettingsTab; label: string }>
-        ).map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setTab(t.id)}
-            className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
-              tab === t.id
-                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
-                : 'text-slate-400 hover:text-slate-200 border border-transparent'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {visibleTabs.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-slate-900/90 border border-slate-800 w-fit">
+          {visibleTabs.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
+                tab === t.id
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                  : 'text-slate-400 hover:text-slate-200 border border-transparent'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {tab === 'hall' && (
         <div className="space-y-6">
@@ -390,13 +523,15 @@ export const SettingsView: React.FC = () => {
             </div>
           </div>
 
-          <button
-            type="submit"
-            className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold flex items-center gap-2"
-          >
-            <Save className="w-4 h-4" />
-            <span>Save Hall Settings</span>
-          </button>
+          {canEditSettings && (
+            <button
+              type="submit"
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold flex items-center gap-2"
+            >
+              <Save className="w-4 h-4" />
+              <span>Save Hall Settings</span>
+            </button>
+          )}
         </form>
         </div>
       )}
@@ -412,17 +547,19 @@ export const SettingsView: React.FC = () => {
                   Auto-suggested on new bookings based on floor &amp; day type (Weekday Mon–Thu vs Weekend Fri–Sun). Staff can always override rent manually.
                 </p>
               </div>
-              <div className="flex items-center gap-3">
-                {savedNotice && <span className="text-xs font-semibold text-emerald-400">Pricing Saved</span>}
-                <button
-                  type="button"
-                  onClick={() => handleSaveSettings()}
-                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold flex items-center gap-1.5"
-                >
-                  <Save className="w-3.5 h-3.5" />
-                  <span>Save Rent Tables</span>
-                </button>
-              </div>
+              {canEditSettings && (
+                <div className="flex items-center gap-3">
+                  {savedNotice && <span className="text-xs font-semibold text-emerald-400">Pricing Saved</span>}
+                  <button
+                    type="button"
+                    onClick={() => handleSaveSettings()}
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold flex items-center gap-1.5"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>Save Rent Tables</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="overflow-x-auto rounded-xl border border-slate-800">
@@ -477,14 +614,16 @@ export const SettingsView: React.FC = () => {
                   When an event date falls inside a season range, its rates override the Standard table for auto-suggestion.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={handleAddSeason}
-                className="px-3.5 py-2 rounded-xl border border-cyan-500/40 bg-cyan-500/15 text-cyan-300 text-xs font-semibold flex items-center gap-1.5"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add Season Rule</span>
-              </button>
+              {canEditSettings && (
+                <button
+                  type="button"
+                  onClick={handleAddSeason}
+                  className="px-3.5 py-2 rounded-xl border border-cyan-500/40 bg-cyan-500/15 text-cyan-300 text-xs font-semibold flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Season Rule</span>
+                </button>
+              )}
             </div>
 
             <div className="space-y-4">
@@ -519,14 +658,16 @@ export const SettingsView: React.FC = () => {
                           className="w-full bg-slate-950/80 border border-slate-800 rounded-lg px-3 py-1.5 text-white tabular-nums"
                         />
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => removeSeason(season.id)}
-                        className="p-2 rounded-lg border border-slate-800 text-slate-400 hover:text-rose-400"
-                        title="Remove season"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {canEditSettings && (
+                        <button
+                          type="button"
+                          onClick={() => removeSeason(season.id)}
+                          className="p-2 rounded-lg border border-slate-800 text-slate-400 hover:text-rose-400"
+                          title="Remove season"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -583,10 +724,11 @@ export const SettingsView: React.FC = () => {
         </div>
       )}
 
-      {tab === 'catalog' && (
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <div className="space-y-6">
-            <form
+      {tab === 'catalog' && canViewCatalog && (
+        <div className={`grid grid-cols-1 ${canEditCatalog ? 'xl:grid-cols-3' : ''} gap-6`}>
+          {canEditCatalog && (
+            <div className="space-y-6">
+              <form
               onSubmit={async (e) => {
                 e.preventDefault();
                 if (!newCatEn.trim()) return;
@@ -708,10 +850,11 @@ export const SettingsView: React.FC = () => {
               >
                 Add Charge Item
               </button>
-            </form>
-          </div>
+              </form>
+            </div>
+          )}
 
-          <div className="xl:col-span-2 glass-panel rounded-2xl overflow-hidden">
+          <div className={`${canEditCatalog ? 'xl:col-span-2' : ''} glass-panel rounded-2xl overflow-hidden`}>
             <div className="px-5 py-3.5 border-b border-slate-800">
               <h3 className="text-sm font-bold text-white">Hall Services &amp; Charges Catalog</h3>
             </div>
@@ -722,7 +865,7 @@ export const SettingsView: React.FC = () => {
                     <th className="py-2.5 px-4 text-start">Item</th>
                     <th className="py-2.5 px-4 text-start">Category</th>
                     <th className="py-2.5 px-4 text-end">Default Rate</th>
-                    <th className="py-2.5 px-4 text-end">Action</th>
+                    {canDeleteCatalog && <th className="py-2.5 px-4 text-end">Action</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/70">
@@ -744,15 +887,17 @@ export const SettingsView: React.FC = () => {
                         <td className="py-3 px-4 text-end tabular-nums font-semibold text-amber-300">
                           {formatPKR(ch.default_rate)} / {ch.unit_label}
                         </td>
-                        <td className="py-3 px-4 text-end">
-                          <button
-                            type="button"
-                            onClick={() => softDeleteChargeItem(ch.id)}
-                            className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-rose-400"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
+                        {canDeleteCatalog && (
+                          <td className="py-3 px-4 text-end">
+                            <button
+                              type="button"
+                              onClick={() => softDeleteChargeItem(ch.id)}
+                              className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-rose-400"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -763,55 +908,57 @@ export const SettingsView: React.FC = () => {
         </div>
       )}
 
-      {tab === 'events' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (!etEn.trim()) return;
-              await saveEventType({
-                name_en: etEn.trim(),
-                name_ur: etUr.trim() || etEn.trim(),
-                color_hex: etColor,
-              });
-              setEtEn('');
-              setEtUr('');
-            }}
-            className="glass-panel rounded-2xl p-5 space-y-4 text-xs"
-          >
-            <h3 className="text-sm font-bold text-white">Add Custom Event Type</h3>
-            <input
-              type="text"
-              required
-              value={etEn}
-              onChange={(e) => setEtEn(e.target.value)}
-              placeholder="Event Name (English), e.g. Mehndi / Aqeeqah"
-              className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
-            />
-            <input
-              type="text"
-              dir="rtl"
-              value={etUr}
-              onChange={(e) => setEtUr(e.target.value)}
-              placeholder="تقریب کا نام (اردو)"
-              className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white font-urdu"
-            />
-            <div className="flex items-center gap-3">
-              <label className="text-slate-300">Calendar Color:</label>
-              <input
-                type="color"
-                value={etColor}
-                onChange={(e) => setEtColor(e.target.value)}
-                className="w-10 h-8 rounded bg-transparent border-0"
-              />
-            </div>
-            <button
-              type="submit"
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-semibold"
+      {tab === 'events' && canViewSettings && (
+        <div className={`grid grid-cols-1 ${canEditSettings ? 'md:grid-cols-2' : ''} gap-6`}>
+          {canEditSettings && (
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!etEn.trim()) return;
+                await saveEventType({
+                  name_en: etEn.trim(),
+                  name_ur: etUr.trim() || etEn.trim(),
+                  color_hex: etColor,
+                });
+                setEtEn('');
+                setEtUr('');
+              }}
+              className="glass-panel rounded-2xl p-5 space-y-4 text-xs"
             >
-              Add Event Type
-            </button>
-          </form>
+              <h3 className="text-sm font-bold text-white">Add Custom Event Type</h3>
+              <input
+                type="text"
+                required
+                value={etEn}
+                onChange={(e) => setEtEn(e.target.value)}
+                placeholder="Event Name (English), e.g. Mehndi / Aqeeqah"
+                className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
+              />
+              <input
+                type="text"
+                dir="rtl"
+                value={etUr}
+                onChange={(e) => setEtUr(e.target.value)}
+                placeholder="تقریب کا نام (اردو)"
+                className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white font-urdu"
+              />
+              <div className="flex items-center gap-3">
+                <label className="text-slate-300">Calendar Color:</label>
+                <input
+                  type="color"
+                  value={etColor}
+                  onChange={(e) => setEtColor(e.target.value)}
+                  className="w-10 h-8 rounded bg-transparent border-0"
+                />
+              </div>
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-semibold"
+              >
+                Add Event Type
+              </button>
+            </form>
+          )}
 
           <div className="glass-panel rounded-2xl p-5">
             <h3 className="text-sm font-bold text-white mb-3">Configured Event Types</h3>
@@ -830,15 +977,199 @@ export const SettingsView: React.FC = () => {
         </div>
       )}
 
-      {tab === 'backup' && (
+      {isSuperAdmin && tab === 'halls' && (
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          <form onSubmit={handleSaveHallSubmit} className="glass-panel rounded-2xl p-5 space-y-3 text-xs">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-cyan-400" />
+                <span>{editingHallId ? 'Edit Hall' : 'Add New Hall'}</span>
+              </h3>
+              {editingHallId && (
+                <button
+                  type="button"
+                  onClick={resetHallForm}
+                  className="text-slate-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+            {hallMsg && (
+              <div className="p-2.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 text-cyan-200">
+                {hallMsg}
+              </div>
+            )}
+            <div>
+              <label className="block text-slate-300 mb-1">Hall Name (English) *</label>
+              <input
+                type="text"
+                required
+                value={hallName}
+                onChange={(e) => setHallName(e.target.value)}
+                placeholder="e.g. Marquee 2"
+                className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-300 mb-1">Hall Name (Urdu)</label>
+              <input
+                type="text"
+                dir="rtl"
+                value={hallNameUr}
+                onChange={(e) => setHallNameUr(e.target.value)}
+                placeholder="مارکی 2"
+                className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white font-urdu"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-slate-300 mb-1">Booking Code Prefix *</label>
+                <input
+                  type="text"
+                  required
+                  value={hallBookingPrefix}
+                  onChange={(e) => setHallBookingPrefix(e.target.value.toUpperCase())}
+                  placeholder="MQ2"
+                  className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white uppercase tabular-nums"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-300 mb-1">Invoice Prefix *</label>
+                <input
+                  type="text"
+                  required
+                  value={hallInvoicePrefix}
+                  onChange={(e) => setHallInvoicePrefix(e.target.value.toUpperCase())}
+                  placeholder="INV2"
+                  className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white uppercase tabular-nums"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-slate-300 mb-1">Phone</label>
+                <input
+                  type="text"
+                  value={hallPhone}
+                  onChange={(e) => setHallPhone(e.target.value)}
+                  className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white tabular-nums"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-300 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={hallEmail}
+                  onChange={(e) => setHallEmail(e.target.value)}
+                  className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-slate-300 mb-1">Address (English)</label>
+              <input
+                type="text"
+                value={hallAddress}
+                onChange={(e) => setHallAddress(e.target.value)}
+                className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-300 mb-1">Address (Urdu)</label>
+              <input
+                type="text"
+                dir="rtl"
+                value={hallAddressUr}
+                onChange={(e) => setHallAddressUr(e.target.value)}
+                className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white font-urdu"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-300 mb-1">Logo URL (Optional)</label>
+              <input
+                type="text"
+                value={hallLogo}
+                onChange={(e) => setHallLogo(e.target.value)}
+                className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-slate-300">
+              <input
+                type="checkbox"
+                checked={hallActive}
+                onChange={(e) => setHallActive(e.target.checked)}
+              />
+              <span>Hall Active</span>
+            </label>
+            <button
+              type="submit"
+              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-semibold"
+            >
+              {editingHallId ? 'Update Hall' : 'Create Hall'}
+            </button>
+          </form>
+
+          <div className="xl:col-span-2 glass-panel rounded-2xl overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-white">Configured Halls</h3>
+              <span className="text-xs text-slate-400 tabular-nums">{db.halls.length} halls</span>
+            </div>
+            <div className="divide-y divide-slate-800/70">
+              {db.halls.map((h) => (
+                <div key={h.id} className="p-4 flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <img
+                      src={h.logo_url || HALL_LOGO_SRC}
+                      alt={h.name}
+                      referrerPolicy="no-referrer"
+                      className="w-10 h-10 rounded-xl object-cover border border-amber-500/30 shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <div className="font-bold text-white flex items-center gap-2">
+                        <span>{h.name}</span>
+                        <span className="font-urdu text-slate-300">({h.name_ur})</span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 truncate">{h.address || '—'}</div>
+                      <div className="text-[11px] text-cyan-300 tabular-nums mt-0.5">
+                        Prefix: {h.booking_code_prefix}-YYYY-0001 · Invoice: {h.invoice_prefix}-YYYY-0001 · {h.phone}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`px-2 py-0.5 rounded-md border text-[11px] font-semibold ${
+                        h.is_active
+                          ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                          : 'border-rose-500/40 bg-rose-500/10 text-rose-300'
+                      }`}
+                    >
+                      {h.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => startEditHall(h)}
+                      className="p-1.5 rounded-lg border border-slate-800 text-slate-300 hover:text-cyan-300"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isSuperAdmin && tab === 'backup' && (
         <div className="glass-panel rounded-2xl p-6 space-y-5">
           <div>
             <h3 className="text-base font-bold text-white flex items-center gap-2">
               <Database className="w-5 h-5 text-cyan-400" />
-              <span>Full System Backup &amp; Restore</span>
+              <span>Full System Backup &amp; Restore (All Halls)</span>
             </h3>
             <p className="text-xs text-slate-400 mt-1">
-              Download a complete snapshot of all bookings, payments, installments, expenses, employees, attendance, advances, catalog, and audit logs.
+              Download a complete multi-hall snapshot of all halls, customers, bookings, payments, daily closings, approvals, expenses, employees, attendance, advances, catalog, and audit logs.
             </p>
           </div>
 

@@ -1,4 +1,4 @@
-export type UserRole = 'super_admin' | 'management' | 'finance';
+export type UserRole = 'super_admin' | 'admin' | 'manager';
 
 export type FloorName = 'First' | 'Second' | 'Third' | 'Full Hall';
 
@@ -16,6 +16,17 @@ export type DiscountType = 'fixed' | 'percent';
 
 export type AttendanceStatus = 'Present' | 'Absent' | 'Half-day' | 'Leave';
 
+export type DailyClosingStatus = 'submitted' | 'received' | 'flagged';
+
+export type ApprovalRequestType =
+  | 'discount'
+  | 'cancellation'
+  | 'refund'
+  | 'reschedule_fee'
+  | 'late_charge_override';
+
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
+
 export interface FloorRatePair {
   weekday: number;
   weekend: number;
@@ -29,8 +40,40 @@ export interface RentSeasonRule {
   rates: Record<FloorName, FloorRatePair>;
 }
 
+export interface Hall {
+  id: string;
+  name: string;
+  name_ur: string;
+  address: string;
+  address_ur: string;
+  phone: string;
+  email: string;
+  logo_url: string;
+  booking_code_prefix: string;
+  invoice_prefix: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at?: string;
+}
+
+import type { PermissionScreenKey, PermissionAction, ScreenPermissionEntry } from '../utils/permissions';
+export type { PermissionScreenKey, PermissionAction, ScreenPermissionEntry };
+
+export interface UserPermission {
+  id: string;
+  user_id: string;
+  hall_id: string;
+  screen_key: PermissionScreenKey;
+  can_view: boolean;
+  can_edit: boolean;
+  can_delete: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface UserProfile {
   id: string;
+  hall_id: string | null;
   full_name: string;
   email: string;
   phone: string;
@@ -41,7 +84,8 @@ export interface UserProfile {
 }
 
 export interface HallSettings {
-  id: number;
+  id: string | number;
+  hall_id: string;
   hall_name: string;
   hall_name_ur: string;
   address: string;
@@ -66,8 +110,23 @@ export interface HallSettings {
   default_language: Language;
 }
 
+export interface Customer {
+  id: string;
+  hall_id: string;
+  full_name: string;
+  phone: string;
+  nic: string;
+  address: string;
+  email: string;
+  notes: string;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at?: string;
+}
+
 export interface EventTypeItem {
   id: string;
+  hall_id: string;
   name_en: string;
   name_ur: string;
   color_hex: string;
@@ -77,6 +136,7 @@ export interface EventTypeItem {
 
 export interface ChargeCategory {
   id: string;
+  hall_id: string;
   name_en: string;
   name_ur: string;
   sort_order: number;
@@ -85,6 +145,7 @@ export interface ChargeCategory {
 
 export interface ChargeCatalogItem {
   id: string;
+  hall_id: string;
   category_id: string;
   name_en: string;
   name_ur: string;
@@ -97,6 +158,7 @@ export interface ChargeCatalogItem {
 
 export interface BookingItem {
   id: string;
+  hall_id: string;
   booking_id: string;
   charge_id?: string | null;
   item_name: string;
@@ -112,6 +174,7 @@ export interface BookingItem {
 
 export interface InstallmentSchedule {
   id: string;
+  hall_id: string;
   booking_id: string;
   title: string;
   due_date: string;
@@ -143,6 +206,8 @@ export interface CancellationDetails {
 
 export interface Booking {
   id: string;
+  hall_id: string;
+  customer_id?: string | null;
   booking_code: string;
   customer_name: string;
   customer_address: string;
@@ -157,6 +222,7 @@ export interface Booking {
   guests_count: number;
   hall_rent: number;
   notes: string;
+  inspection_notes: string;
   status: BookingStatus;
   booking_date: string; // auto, fixed, not editable
   crates_ordered: number;
@@ -183,8 +249,23 @@ export interface Booking {
   deleted_at: string | null;
 }
 
+export interface InvoiceRecord {
+  id: string;
+  hall_id: string;
+  booking_id: string;
+  invoice_number: string;
+  standard_total: number;
+  discount_amount: number;
+  tax_amount: number;
+  grand_total: number;
+  issued_at: string;
+  created_by?: string;
+  deleted_at: string | null;
+}
+
 export interface Payment {
   id: string;
+  hall_id: string;
   receipt_number: string;
   booking_id: string;
   amount: number;
@@ -199,6 +280,7 @@ export interface Payment {
 
 export interface ExpenseCategory {
   id: string;
+  hall_id: string;
   name_en: string;
   name_ur: string;
   deleted_at: string | null;
@@ -206,6 +288,7 @@ export interface ExpenseCategory {
 
 export interface Employee {
   id: string;
+  hall_id: string;
   full_name: string;
   phone: string;
   nic: string;
@@ -219,6 +302,7 @@ export interface Employee {
 
 export interface EmployeeAttendance {
   id: string;
+  hall_id: string;
   employee_id: string;
   attendance_date: string; // YYYY-MM-DD
   status: AttendanceStatus;
@@ -227,6 +311,7 @@ export interface EmployeeAttendance {
 
 export interface EmployeeAdvance {
   id: string;
+  hall_id: string;
   employee_id: string;
   amount: number;
   advance_date: string;
@@ -240,6 +325,7 @@ export interface EmployeeAdvance {
 
 export interface Expense {
   id: string;
+  hall_id: string;
   category_id: string;
   category_name: string;
   booking_id?: string | null;
@@ -254,11 +340,75 @@ export interface Expense {
   created_at: string;
 }
 
+export interface DailyClosingBookingBreakdown {
+  booking_id: string;
+  booking_code: string;
+  customer_name: string;
+  cash_amount: number;
+  online_amount: number;
+  total_amount: number;
+  payment_count: number;
+}
+
+export interface DailyClosing {
+  id: string;
+  hall_id: string;
+  closing_date: string;
+  submitted_by?: string | null;
+  submitted_by_name: string;
+  submitted_at: string;
+  cash_total: number;
+  online_total: number;
+  grand_total: number;
+  bookings_breakdown: DailyClosingBookingBreakdown[];
+  manager_notes: string;
+  status: DailyClosingStatus;
+  reviewed_by?: string | null;
+  reviewed_by_name?: string | null;
+  reviewed_at?: string | null;
+  discrepancy_amount: number;
+  admin_notes: string;
+}
+
+export interface ApprovalRequest {
+  id: string;
+  hall_id: string;
+  booking_id: string;
+  booking_code: string;
+  customer_name: string;
+  request_type: ApprovalRequestType;
+  requested_by?: string | null;
+  requested_by_name: string;
+  requested_at: string;
+  payload: Record<string, unknown>;
+  reason: string;
+  status: ApprovalStatus;
+  reviewed_by?: string | null;
+  reviewed_by_name?: string | null;
+  reviewed_at?: string | null;
+  review_note: string;
+}
+
 export interface AuditLog {
   id: string;
+  hall_id: string;
   actor_name: string;
   actor_role: UserRole | string;
-  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'RESTORE' | 'IMPORT' | 'SETTINGS' | 'CANCEL' | 'RESCHEDULE' | 'PAYROLL';
+  action:
+    | 'CREATE'
+    | 'UPDATE'
+    | 'DELETE'
+    | 'RESTORE'
+    | 'IMPORT'
+    | 'SETTINGS'
+    | 'CANCEL'
+    | 'RESCHEDULE'
+    | 'PAYROLL'
+    | 'CLOSING'
+    | 'APPROVAL'
+    | 'HALL'
+    | 'USER'
+    | 'PERMISSIONS';
   entity_type: string;
   entity_id: string;
   entity_label: string;
@@ -266,13 +416,24 @@ export interface AuditLog {
   created_at: string;
 }
 
+export interface HallSequenceCounters {
+  booking: number;
+  invoice: number;
+  receipt: number;
+}
+
 export interface AppDatabase {
+  halls: Hall[];
+  hallSettings: HallSettings[];
   profiles: UserProfile[];
+  userPermissions: UserPermission[];
   settings: HallSettings;
+  customers: Customer[];
   eventTypes: EventTypeItem[];
   chargeCategories: ChargeCategory[];
   chargesCatalog: ChargeCatalogItem[];
   bookings: Booking[];
+  invoices: InvoiceRecord[];
   bookingItems: BookingItem[];
   installments: InstallmentSchedule[];
   payments: Payment[];
@@ -281,10 +442,9 @@ export interface AppDatabase {
   attendance: EmployeeAttendance[];
   advances: EmployeeAdvance[];
   expenses: Expense[];
+  dailyClosings: DailyClosing[];
+  approvalRequests: ApprovalRequest[];
   auditLogs: AuditLog[];
-  sequences: {
-    booking: number;
-    invoice: number;
-    receipt: number;
-  };
+  perHallSequences: Record<string, HallSequenceCounters>;
+  sequences: HallSequenceCounters;
 }
