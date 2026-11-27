@@ -1,0 +1,6 @@
+{
+  "name": "Marquee 1 – Hall Management System",
+  "description": "Bilingual Urdu/English banquet hall management system for Marquee 1, Karachi (PKR) with Supabase Postgres, Auth, RLS, Floor Conflict Prevention, Crate Credits, and Bilingual Invoices.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

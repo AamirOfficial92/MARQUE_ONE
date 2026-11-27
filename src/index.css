@@ -1,0 +1,135 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+    --font-urdu: 'Noto Nastaliq Urdu', 'Plus Jakarta Sans', serif;
+  }
+
+  html {
+    font-family: var(--font-sans);
+    background-color: #060913;
+    color: #f1f5f9;
+  }
+
+  html[dir='rtl'] body,
+  html[dir='rtl'] input,
+  html[dir='rtl'] select,
+  html[dir='rtl'] textarea,
+  html[dir='rtl'] button {
+    font-family: var(--font-urdu), var(--font-sans);
+  }
+
+  html[dir='rtl'] .font-urdu-relaxed {
+    line-height: 2.15;
+  }
+
+  .font-urdu {
+    font-family: var(--font-urdu);
+    line-height: 2.1;
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+    font-family: var(--font-mono);
+  }
+}
+
+/* Neon glass surface utilities */
+.glass-panel {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.82) 0%, rgba(10, 15, 29, 0.88) 100%);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.neon-border-cyan {
+  border-color: rgba(6, 182, 212, 0.35);
+  box-shadow: 0 0 24px -8px rgba(6, 182, 212, 0.25);
+}
+
+.neon-border-violet {
+  border-color: rgba(139, 92, 246, 0.35);
+  box-shadow: 0 0 24px -8px rgba(139, 92, 246, 0.25);
+}
+
+.neon-border-gold {
+  border-color: rgba(245, 158, 11, 0.35);
+  box-shadow: 0 0 24px -8px rgba(245, 158, 11, 0.22);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.5);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.45);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(6, 182, 212, 0.55);
+}
+
+/* Official A4 PDF Print Styles (Invoices & Reports) */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only-sheet {
+    position: static !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+}
+
+/* 80mm Thermal Printer Mode for Client Payment Receipts */
+@media print {
+  body.print-thermal {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body.print-thermal .print-thermal-sheet {
+    width: 76mm !important;
+    max-width: 76mm !important;
+    margin: 0 auto !important;
+    padding: 2mm !important;
+    font-size: 11px !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+}
+
+@page thermal80 {
+  size: 80mm auto;
+  margin: 2mm;
+}
+
+body.print-thermal .print-thermal-sheet {
+  page: thermal80;
+}
