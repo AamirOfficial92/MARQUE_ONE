@@ -70,6 +70,8 @@ CREATE TABLE IF NOT EXISTS public.halls (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS uq_halls_id ON public.halls (id);
+
 -- Seed first default hall "Marquee 1" immediately so migrations can reference it
 INSERT INTO public.halls (
   id, name, name_ur, address, address_ur, phone, email, logo_url, booking_code_prefix, invoice_prefix, is_active
@@ -96,6 +98,8 @@ CREATE TABLE IF NOT EXISTS public.hall_sequences (
   receipt_seq BIGINT NOT NULL DEFAULT 0,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_hall_sequences_hall_id ON public.hall_sequences (hall_id);
 
 INSERT INTO public.hall_sequences (hall_id, booking_seq, invoice_seq, receipt_seq)
 VALUES ('11111111-1111-4111-8111-111111111101', 0, 0, 0)
@@ -574,9 +578,16 @@ BEGIN
   ALTER TABLE public.expense_categories DROP CONSTRAINT IF EXISTS expense_categories_name_en_key;
 END $$;
 
+CREATE UNIQUE INDEX IF NOT EXISTS uq_profiles_id ON public.profiles(id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_hall_settings_hall_id ON public.hall_settings(hall_id);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_bookings_hall_code ON public.bookings(hall_id, booking_code);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_bookings_hall_invoice ON public.bookings(hall_id, invoice_number) WHERE invoice_number IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_invoices_hall_number ON public.invoices(hall_id, invoice_number);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_payments_hall_receipt ON public.payments(hall_id, receipt_number);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_event_types_hall_name ON public.event_types(hall_id, name_en);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_charge_categories_hall_name ON public.charge_categories(hall_id, name_en);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_expense_categories_hall_name ON public.expense_categories(hall_id, name_en);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_employee_attendance_emp_date ON public.employee_attendance(employee_id, attendance_date);
 
 -- ============================================================================
 -- 5. TRIGGERS: PER-HALL CODES, OVERLAP CHECK & INVOICE SYNC
@@ -717,7 +728,10 @@ CREATE TABLE IF NOT EXISTS public.user_permissions (
   UNIQUE (user_id, hall_id, screen_key)
 );
 
-CREATE INDEX IF NOT EXISTS idx_user_permissions_lookup
+ALTER TABLE public.user_permissions ADD COLUMN IF NOT EXISTS hall_id UUID REFERENCES public.halls(id) ON DELETE CASCADE DEFAULT '11111111-1111-4111-8111-111111111101';
+UPDATE public.user_permissions SET hall_id = '11111111-1111-4111-8111-111111111101'::UUID WHERE hall_id IS NULL;
+DROP INDEX IF EXISTS public.idx_user_permissions_lookup;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_user_permissions_user_hall_screen
   ON public.user_permissions(user_id, hall_id, screen_key);
 
 CREATE OR REPLACE FUNCTION public.current_user_role()
