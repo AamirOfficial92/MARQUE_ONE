@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { CalendarRange, Database, Download, FileSpreadsheet, Plus, RotateCcw, Save, Trash2 } from 'lucide-react';
+import { CalendarRange, Database, Download, FileSpreadsheet, Monitor, Moon, Plus, RotateCcw, Save, Sun, Trash2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useApp } from '../context/AppContext';
+import { tr } from '../i18n/translations';
 import { FloorName, FloorRatePair, HallSettings, RentSeasonRule } from '../types';
 import { formatPKR } from '../utils/formatters';
 
@@ -12,6 +13,11 @@ const FLOOR_LIST: FloorName[] = ['First', 'Second', 'Third', 'Full Hall'];
 export const SettingsView: React.FC = () => {
   const {
     db,
+    lang,
+    theme,
+    themePreferenceSource,
+    setTheme,
+    resetThemeToSystem,
     supabaseLive,
     updateSettings,
     saveChargeCategory,
@@ -152,11 +158,62 @@ export const SettingsView: React.FC = () => {
       </div>
 
       {tab === 'hall' && (
-        <form onSubmit={handleSaveSettings} className="glass-panel rounded-2xl p-6 space-y-5">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-white">Hall Profile, Invoice Rules & Operational Buffers</h3>
-            {savedNotice && <span className="text-xs font-semibold text-emerald-400">Settings Saved</span>}
+        <div className="space-y-6">
+          {/* Appearance & Theme Selector */}
+          <div className="glass-panel rounded-2xl p-6 flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h3 className="text-base font-bold text-white">{tr('appearance', lang)}</h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {lang === 'ur'
+                  ? 'ڈارک یا لائٹ موڈ منتخب کریں۔ پرنٹ ہونے والے تمام بل اور رپورٹس ہمیشہ صاف سفید کاغذ پر پرنٹ ہوں گی۔'
+                  : 'Choose Dark (neon) or Light mode. Invoices and reports always print in light A4 colors and 80mm black-on-white receipts.'}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setTheme('dark')}
+                className={`px-3.5 py-2 rounded-xl border text-xs font-semibold flex items-center gap-2 transition-colors ${
+                  theme === 'dark' && themePreferenceSource === 'saved'
+                    ? 'border-cyan-500/50 bg-cyan-500/15 text-cyan-300'
+                    : 'border-slate-800 bg-slate-900/70 text-slate-300 hover:border-cyan-500/40'
+                }`}
+              >
+                <Moon className="w-3.5 h-3.5 text-violet-400" />
+                <span>{tr('darkMode', lang)}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTheme('light')}
+                className={`px-3.5 py-2 rounded-xl border text-xs font-semibold flex items-center gap-2 transition-colors ${
+                  theme === 'light' && themePreferenceSource === 'saved'
+                    ? 'border-cyan-500/50 bg-cyan-500/15 text-cyan-300'
+                    : 'border-slate-800 bg-slate-900/70 text-slate-300 hover:border-cyan-500/40'
+                }`}
+              >
+                <Sun className="w-3.5 h-3.5 text-amber-400" />
+                <span>{tr('lightMode', lang)}</span>
+              </button>
+              <button
+                type="button"
+                onClick={resetThemeToSystem}
+                className={`px-3.5 py-2 rounded-xl border text-xs font-semibold flex items-center gap-2 transition-colors ${
+                  themePreferenceSource === 'system'
+                    ? 'border-violet-500/50 bg-violet-500/15 text-violet-300'
+                    : 'border-slate-800 bg-slate-900/70 text-slate-400 hover:border-violet-500/40'
+                }`}
+              >
+                <Monitor className="w-3.5 h-3.5" />
+                <span>{tr('systemDefault', lang)}</span>
+              </button>
+            </div>
           </div>
+
+          <form onSubmit={handleSaveSettings} className="glass-panel rounded-2xl p-6 space-y-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-white">Hall Profile, Invoice Rules & Operational Buffers</h3>
+              {savedNotice && <span className="text-xs font-semibold text-emerald-400">Settings Saved</span>}
+            </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
             <div>
@@ -341,6 +398,7 @@ export const SettingsView: React.FC = () => {
             <span>Save Hall Settings</span>
           </button>
         </form>
+        </div>
       )}
 
       {tab === 'pricing' && (

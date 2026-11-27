@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { Globe, KeyRound, Lock, Mail, ShieldCheck, Users, Wallet } from 'lucide-react';
+import { Globe, KeyRound, Lock, Mail, Moon, ShieldCheck, Sun, Users, Wallet } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { HALL_LOGO_SRC } from '../data/seedData';
 import { tr } from '../i18n/translations';
 import { UserRole } from '../types';
 
 export const AuthScreen: React.FC = () => {
-  const { lang, toggleLang, signInWithEmail, signInDemoRole, supabaseLive, loading } = useApp();
+  const { lang, toggleLang, theme, toggleTheme, signInWithEmail, signInDemoRole, supabaseLive, loading } = useApp();
   const [email, setEmail] = useState('admin@marquee1.pk');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +48,7 @@ export const AuthScreen: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-[#060913] relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-slate-100 dark:bg-[#060913] relative overflow-hidden transition-colors">
       {/* Subtle ambient glows */}
       <div className="pointer-events-none absolute -top-40 -left-40 w-96 h-96 rounded-full bg-cyan-500/10 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-40 -right-40 w-96 h-96 rounded-full bg-violet-500/10 blur-3xl" />
@@ -70,14 +70,29 @@ export const AuthScreen: React.FC = () => {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={toggleLang}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-900/80 text-xs font-medium text-slate-200 hover:border-cyan-500/50 transition-colors whitespace-nowrap shrink-0"
-          >
-            <Globe className="w-3.5 h-3.5 text-cyan-400" />
-            <span>{lang === 'en' ? 'اردو' : 'English'}</span>
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={toggleTheme}
+              title={theme === 'dark' ? tr('lightMode', lang) : tr('darkMode', lang)}
+              aria-label={theme === 'dark' ? tr('lightMode', lang) : tr('darkMode', lang)}
+              className="p-2 rounded-lg border border-slate-700 bg-slate-900/80 text-slate-200 hover:border-cyan-500/50 transition-colors"
+            >
+              {theme === 'dark' ? (
+                <Sun className="w-3.5 h-3.5 text-amber-300" />
+              ) : (
+                <Moon className="w-3.5 h-3.5 text-violet-400" />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={toggleLang}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-900/80 text-xs font-medium text-slate-200 hover:border-cyan-500/50 transition-colors whitespace-nowrap shrink-0"
+            >
+              <Globe className="w-3.5 h-3.5 text-cyan-400" />
+              <span>{lang === 'en' ? 'اردو' : 'English'}</span>
+            </button>
+          </div>
         </div>
 
         <h2 className="text-lg font-semibold text-slate-100 mb-1">{tr('loginTitle', lang)}</h2>

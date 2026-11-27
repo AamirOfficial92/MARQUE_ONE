@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   phone TEXT,
   role public.user_role NOT NULL DEFAULT 'management',
   is_active BOOLEAN NOT NULL DEFAULT true,
+  preferred_theme TEXT CHECK (preferred_theme IN ('dark', 'light')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -459,6 +460,9 @@ ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 -- Profiles
 CREATE POLICY "Users can read own profile" ON public.profiles
   FOR SELECT USING (auth.uid() = id OR public.current_user_role() = 'super_admin');
+CREATE POLICY "Users can update own theme preference" ON public.profiles
+  FOR UPDATE USING (auth.uid() = id)
+  WITH CHECK (auth.uid() = id AND role = public.current_user_role() AND is_active = true);
 CREATE POLICY "Super admin manages profiles" ON public.profiles
   FOR ALL USING (public.current_user_role() = 'super_admin');
 

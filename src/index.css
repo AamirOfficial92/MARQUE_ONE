@@ -14,6 +14,11 @@
     color: #f1f5f9;
   }
 
+  html.light {
+    background-color: #f1f5f9;
+    color: #0f172a;
+  }
+
   html[dir='rtl'] body,
   html[dir='rtl'] input,
   html[dir='rtl'] select,
@@ -37,7 +42,7 @@
   }
 }
 
-/* Neon glass surface utilities */
+/* Neon glass surface utilities (Dark Mode default) */
 .glass-panel {
   background: linear-gradient(180deg, rgba(15, 23, 42, 0.82) 0%, rgba(10, 15, 29, 0.88) 100%);
   backdrop-filter: blur(18px);
@@ -60,6 +65,149 @@
   box-shadow: 0 0 24px -8px rgba(245, 158, 11, 0.22);
 }
 
+/* Clean, professional Light Mode surface & contrast system */
+html.light .glass-panel {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(248, 250, 252, 0.96) 100%);
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  box-shadow: 0 10px 28px -16px rgba(15, 23, 42, 0.16), 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+
+html.light .neon-border-cyan {
+  border-color: rgba(8, 145, 178, 0.38);
+  box-shadow: 0 10px 26px -14px rgba(6, 182, 212, 0.26);
+}
+
+html.light .neon-border-violet {
+  border-color: rgba(124, 58, 237, 0.34);
+  box-shadow: 0 10px 26px -14px rgba(139, 92, 246, 0.24);
+}
+
+html.light .neon-border-gold {
+  border-color: rgba(217, 119, 6, 0.38);
+  box-shadow: 0 10px 26px -14px rgba(245, 158, 11, 0.24);
+}
+
+/* Scoped Light Mode readability & surface tokens (excludes print sheets & solid CTAs) */
+html.light :is(
+  [class~="text-white"],
+  [class~="text-slate-100"],
+  [class~="text-slate-200"]
+):not(.print-only-sheet):not(.print-only-sheet *):not(.print-thermal-sheet):not(.print-thermal-sheet *):not([class*="bg-gradient-to-"]):not([class*="bg-rose-600"]):not([class*="bg-rose-600"] *):not([class*="bg-emerald-600"]):not([class*="bg-cyan-600"]):not([class*="bg-violet-600"]) {
+  color: #0f172a;
+}
+
+html.light :is([class*="bg-gradient-to-"], [class*="bg-rose-600"], [class*="bg-emerald-600"], [class*="bg-cyan-600"], [class*="bg-violet-600"]) {
+  color: #ffffff;
+}
+
+html.light [class~="text-slate-300"]:not(.print-only-sheet):not(.print-only-sheet *):not(.print-thermal-sheet):not(.print-thermal-sheet *) {
+  color: #334155;
+}
+
+html.light [class~="text-slate-400"]:not(.print-only-sheet):not(.print-only-sheet *):not(.print-thermal-sheet):not(.print-thermal-sheet *) {
+  color: #475569;
+}
+
+html.light [class~="text-slate-500"]:not(.print-only-sheet):not(.print-only-sheet *):not(.print-thermal-sheet):not(.print-thermal-sheet *) {
+  color: #64748b;
+}
+
+/* Vibrant yet high-contrast accent ink on light surfaces */
+html.light :is([class~="text-cyan-200"], [class~="text-cyan-300"], [class~="text-cyan-400"]):not(.print-only-sheet):not(.print-only-sheet *) {
+  color: #0e7490;
+}
+
+html.light :is([class~="text-violet-200"], [class~="text-violet-300"], [class~="text-violet-400"]):not(.print-only-sheet):not(.print-only-sheet *) {
+  color: #6d28d9;
+}
+
+html.light :is([class~="text-amber-300"], [class~="text-amber-400"], [class~="text-amber-400/90"]):not(.print-only-sheet):not(.print-only-sheet *) {
+  color: #b45309;
+}
+
+html.light :is([class~="text-emerald-300"], [class~="text-emerald-400"]):not(.print-only-sheet):not(.print-only-sheet *) {
+  color: #047857;
+}
+
+html.light :is([class~="text-rose-200"], [class~="text-rose-300"], [class~="text-rose-400"]):not(.print-only-sheet):not(.print-only-sheet *) {
+  color: #be123c;
+}
+
+/* Light surfaces for dark utility backgrounds (inputs, tables, segment controls, nested cards) */
+html.light :is(
+  [class*="bg-slate-950"],
+  [class*="bg-slate-900/80"],
+  [class*="bg-slate-900/70"],
+  [class*="bg-slate-900/60"],
+  [class*="bg-slate-900/50"],
+  [class*="bg-slate-900/40"],
+  [class~="bg-slate-900"]
+):not(.print-only-sheet):not(.print-only-sheet *):not(.print-thermal-sheet):not(.print-thermal-sheet *) {
+  background-color: #ffffff;
+}
+
+html.light [class~="bg-slate-900/90"]:not(.print-only-sheet):not(.print-only-sheet *) {
+  background-color: #e2e8f0;
+}
+
+html.light :is([class*="bg-slate-800"]):not(.print-only-sheet):not(.print-only-sheet *) {
+  background-color: #e2e8f0;
+}
+
+html.light [class*="bg-rose-950"]:not(.print-only-sheet):not(.print-only-sheet *) {
+  background-color: #fff1f2;
+}
+
+html.light [class*="bg-cyan-950"]:not(.print-only-sheet):not(.print-only-sheet *) {
+  background-color: #ecfeff;
+}
+
+html.light [class*="bg-black/"]:not(.print-only-sheet):not(.print-only-sheet *) {
+  background-color: rgba(15, 23, 42, 0.45);
+}
+
+html.light :is(
+  [class*="border-slate-800"],
+  [class*="border-slate-700"]
+):not(.print-only-sheet):not(.print-only-sheet *):not(.print-thermal-sheet):not(.print-thermal-sheet *) {
+  border-color: rgba(15, 23, 42, 0.14);
+}
+
+html.light [class*="divide-slate-800"] > :not(:last-child) {
+  border-color: rgba(15, 23, 42, 0.09);
+}
+
+html.light :is(
+  [class*="hover:bg-slate-800"]:hover,
+  [class*="hover:bg-slate-900"]:hover
+):not(.print-only-sheet):not(.print-only-sheet *) {
+  background-color: #f1f5f9;
+}
+
+html.light :is(
+  [class*="hover:text-white"]:hover,
+  [class*="hover:text-slate-100"]:hover,
+  [class*="hover:text-slate-200"]:hover
+):not(.print-only-sheet):not(.print-only-sheet *):not([class*="bg-gradient-to-"]) {
+  color: #0f172a;
+}
+
+html.light input,
+html.light select,
+html.light textarea {
+  color: #0f172a;
+}
+
+html.light input::placeholder,
+html.light textarea::placeholder {
+  color: #94a3b8;
+}
+
+html.light select option {
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 7px;
@@ -76,16 +224,30 @@
   background: rgba(6, 182, 212, 0.55);
 }
 
-/* Official A4 PDF Print Styles (Invoices & Reports) */
+html.light ::-webkit-scrollbar-track {
+  background: #e2e8f0;
+}
+html.light ::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+}
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: #0891b2;
+}
+
+/* Official A4 PDF Print Styles (Invoices & Reports ALWAYS light colors on A4) */
 @media print {
   @page {
     size: A4;
     margin: 12mm;
   }
 
+  html,
+  html.dark,
+  html.light,
   body {
     background: #ffffff !important;
     color: #0f172a !important;
+    color-scheme: light !important;
   }
 
   .no-print {
@@ -103,13 +265,57 @@
     box-shadow: none !important;
     border: none !important;
   }
+
+  /* Ensure ReportsView cards & text always print crisp dark-on-white regardless of UI theme */
+  .print-only-sheet .glass-panel {
+    background: #ffffff !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid #cbd5e1 !important;
+    box-shadow: none !important;
+    color: #0f172a !important;
+  }
+
+  .print-only-sheet :is([class~="text-white"], [class~="text-slate-100"], [class~="text-slate-200"]) {
+    color: #0f172a !important;
+  }
+
+  .print-only-sheet :is([class~="text-slate-300"], [class~="text-slate-400"], [class~="text-slate-500"]) {
+    color: #475569 !important;
+  }
+
+  .print-only-sheet :is([class~="text-cyan-300"], [class~="text-cyan-400"]) {
+    color: #0e7490 !important;
+  }
+
+  .print-only-sheet :is([class~="text-violet-300"], [class~="text-violet-400"]) {
+    color: #6d28d9 !important;
+  }
+
+  .print-only-sheet :is([class~="text-amber-300"], [class~="text-amber-400"]) {
+    color: #b45309 !important;
+  }
+
+  .print-only-sheet :is([class~="text-emerald-300"], [class~="text-emerald-400"]) {
+    color: #047857 !important;
+  }
+
+  .print-only-sheet :is([class~="text-rose-300"], [class~="text-rose-400"]) {
+    color: #be123c !important;
+  }
+
+  .print-only-sheet [class*="border-slate-800"] {
+    border-color: #cbd5e1 !important;
+  }
 }
 
-/* 80mm Thermal Printer Mode for Client Payment Receipts */
+/* 80mm Thermal Printer Mode for Client Payment Receipts (ALWAYS black on white) */
 @media print {
   body.print-thermal {
     margin: 0 !important;
     padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
   }
 
   body.print-thermal .print-thermal-sheet {
@@ -122,6 +328,11 @@
     color: #000000 !important;
     box-shadow: none !important;
     border: none !important;
+  }
+
+  body.print-thermal .print-thermal-sheet * {
+    color: #000000 !important;
+    background: transparent !important;
   }
 }
 

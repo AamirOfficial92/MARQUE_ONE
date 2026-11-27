@@ -19,6 +19,7 @@ import {
   Language,
   Payment,
   RescheduleEntry,
+  ThemeMode,
   UserProfile,
   UserRole,
 } from '../types';
@@ -28,16 +29,38 @@ import { calculateCrateBill, findBookingConflict, todayISO } from '../utils/form
 
 const STORAGE_KEY = 'marquee1_hms_db_v1';
 const USER_STORAGE_KEY = 'marquee1_hms_active_user_v1';
+const THEME_STORAGE_KEY = 'marquee1_hms_theme_v1';
+
+function getSystemTheme(): ThemeMode {
+  if (typeof window !== 'undefined' && window.matchMedia) {
+    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  }
+  return 'dark';
+}
+
+function getSavedBrowserTheme(): ThemeMode | null {
+  try {
+    const val = localStorage.getItem(THEME_STORAGE_KEY);
+    return val === 'light' || val === 'dark' ? val : null;
+  } catch {
+    return null;
+  }
+}
 
 interface AppContextValue {
   db: AppDatabase;
   currentUser: UserProfile | null;
   lang: Language;
+  theme: ThemeMode;
+  themePreferenceSource: 'system' | 'saved';
   loading: boolean;
   errorMsg: string | null;
   supabaseLive: boolean;
   setLang: (lang: Language) => void;
   toggleLang: () => void;
+  setTheme: (theme: ThemeMode) => void;
+  toggleTheme: () => void;
+  resetThemeToSystem: () => void;
   clearError: () => void;
   signInWithEmail: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   signInDemoRole: (role: UserRole) => void;
@@ -165,6 +188,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [lang, setLangState] = useState<Language>(() => db.settings.default_language || 'en');
+  const [themePreferenceSource, setThemePreferenceSource] = useState<'system' | 'saved'>(() => {
+    if (currentUser?.preferred_theme === 'light' || currentUser?.preferred_theme === 'dark') {
+      return 'saved';
+    }
+    return getSavedBrowserTheme() ? 'saved' : 'system';
+  });
+  const [theme, setThemeState] = useState<ThemeMode>(() => {
+    if (currentUser?.preferred_theme === 'light' || currentUser?.preferred_theme === 'dark') {
+      return currentUser.preferred_theme;
+    }
+    return getSavedBrowserTheme() || getSystemTheme();
+  });
   const [loading, setLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -172,6 +207,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     document.documentElement.lang = lang;
     document.documentElement.dir = lang === 'ur' ? 'rtl' : 'ltr';
   }, [lang]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.remove('dark', 'light');
+    root.classList.add(theme);
+    root.style.colorScheme = theme;
+  }, [theme]);
+
+  useEffect(() => {
+    if (themePreferenceSource !== 'system' || typeof window === 'undefined' || !window.matchMedia) {
+      return;
+    }
+    const mq = window.matchMedia('(prefers-color-scheme: light)');
+    const onChange = (e: MediaQueryListEvent) => {
+      setThemeState(e.matches ? 'light' : 'dark');
+    };
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, [themePreferenceSource]);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -224,7 +278,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ]);
 
       if (profileRes.data) {
-        setCurrentUser(profileRes.data as UserProfile);
+        const prof = profileRes.data as UserProfile;
+        setCurrentUser(prof);
+        if (prof.preferred_theme === 'light' || prof.preferred_theme === 'dark') {
+          setThemeState(prof.preferred_theme);
+          setThemePreferenceSource('saved');
+          try {
+            localStorage.setItem(THEME_STORAGE_KEY, prof.preferred_theme);
+          } catch {
+            // ignore
+          }
+        }
       }
       setDb((prev) => ({
         ...prev,
@@ -274,6 +338,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const toggleLang = () => setLangState((prev) => (prev === 'en' ? 'ur' : 'en'));
   const clearError = () => setErrorMsg(null);
 
+  const persistUserTheme = (nextTheme: ThemeMode | null) => {
+    if (!currentUser) return;
+    const updatedUser: UserProfile = { ...currentUser, preferred_theme: nextTheme };
+    setCurrentUser(updatedUser);
+    try {
+      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
+    } catch {
+      // ignore
+    }
+    setDb((prev) => ({
+      ...prev,
+      profiles: prev.profiles.map((p) => (p.id === updatedUser.id ? { ...p, preferred_theme: nextTheme } : p)),
+    }));
+    if (isSupabaseConfigured && supabase) {
+      supabase.from('profiles').update({ preferred_theme: nextTheme }).eq('id', updatedUser.id).then(() => {});
+    }
+  };
+
+  const setTheme = (next: ThemeMode) => {
+    setThemeState(next);
+    setThemePreferenceSource('saved');
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, next);
+    } catch {
+      // ignore
+    }
+    persistUserTheme(next);
+  };
+
+  const toggleTheme = () => {
+    setTheme(theme === 'dark' ? 'light' : 'dark');
+  };
+
+  const resetThemeToSystem = () => {
+    try {
+      localStorage.removeItem(THEME_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+    setThemePreferenceSource('system');
+    setThemeState(getSystemTheme());
+    persistUserTheme(null);
+  };
+
   const appendAudit = (
     action: AuditLog['action'],
     entityType: string,
@@ -318,6 +426,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     setCurrentUser(matched);
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(matched));
+    if (matched.preferred_theme === 'light' || matched.preferred_theme === 'dark') {
+      setThemeState(matched.preferred_theme);
+      setThemePreferenceSource('saved');
+      localStorage.setItem(THEME_STORAGE_KEY, matched.preferred_theme);
+    }
     return { ok: true };
   };
 
@@ -325,6 +438,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const matched = db.profiles.find((p) => p.role === role && p.is_active) || db.profiles[0];
     setCurrentUser(matched);
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(matched));
+    if (matched.preferred_theme === 'light' || matched.preferred_theme === 'dark') {
+      setThemeState(matched.preferred_theme);
+      setThemePreferenceSource('saved');
+      localStorage.setItem(THEME_STORAGE_KEY, matched.preferred_theme);
+    }
   };
 
   const signOut = async () => {
@@ -908,6 +1026,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       phone: user.phone,
       role: user.role,
       is_active: user.is_active,
+      preferred_theme: user.preferred_theme ?? existing?.preferred_theme ?? null,
       created_at: existing?.created_at || new Date().toISOString(),
     };
 
@@ -1075,11 +1194,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         db,
         currentUser,
         lang,
+        theme,
+        themePreferenceSource,
         loading,
         errorMsg,
         supabaseLive: isSupabaseConfigured,
         setLang,
         toggleLang,
+        setTheme,
+        toggleTheme,
+        resetThemeToSystem,
         clearError,
         signInWithEmail,
         signInDemoRole,

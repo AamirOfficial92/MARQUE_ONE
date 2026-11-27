@@ -208,15 +208,14 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onSelectBooking, onC
                           key={bk.id}
                           type="button"
                           onClick={() => onSelectBooking(bk)}
-                          className="w-full text-start px-1.5 py-1 rounded-md text-[11px] leading-tight border transition-opacity hover:opacity-90 truncate"
+                          className="w-full text-start px-1.5 py-1 rounded-md text-[11px] leading-tight border text-slate-900 dark:text-slate-100 transition-opacity hover:opacity-90 truncate"
                           style={{
-                            borderColor: `${col}66`,
-                            backgroundColor: `${col}22`,
-                            color: '#f8fafc',
+                            borderColor: `${col}88`,
+                            backgroundColor: `${col}26`,
                           }}
                         >
                           <div className="font-semibold truncate">{bk.customer_name}</div>
-                          <div className="text-[10px] text-slate-300 truncate tabular-nums">
+                          <div className="text-[10px] text-slate-700 dark:text-slate-300 truncate tabular-nums">
                             {bk.floors.join(', ')} · {formatTime12h(bk.start_time)}
                           </div>
                         </button>

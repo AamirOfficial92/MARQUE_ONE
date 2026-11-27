@@ -11,10 +11,12 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Moon,
   Plus,
   Receipt,
   Search,
   Settings,
+  Sun,
   Trash2,
   UserCog,
   X,
@@ -61,7 +63,7 @@ export const Layout: React.FC<LayoutProps> = ({
   onOpenBookingFromSearch,
   children,
 }) => {
-  const { db, currentUser, lang, toggleLang, signOut, supabaseLive } = useApp();
+  const { db, currentUser, lang, toggleLang, theme, toggleTheme, signOut, supabaseLive } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [moreDrawerOpen, setMoreDrawerOpen] = useState(false);
 
@@ -113,9 +115,9 @@ export const Layout: React.FC<LayoutProps> = ({
   const mobileOverflow = permittedNav.slice(4);
 
   return (
-    <div className="min-h-screen flex bg-[#060913] text-slate-100">
+    <div className="min-h-screen flex bg-slate-100 text-slate-900 dark:bg-[#060913] dark:text-slate-100 transition-colors">
       {/* Desktop Sidebar */}
-      <aside className="no-print hidden lg:flex lg:flex-col lg:w-64 lg:shrink-0 border-e border-slate-800/80 bg-[#090E1B]/95 backdrop-blur-xl sticky top-0 h-screen">
+      <aside className="no-print hidden lg:flex lg:flex-col lg:w-64 lg:shrink-0 border-e border-slate-800/80 bg-white/95 dark:bg-[#090E1B]/95 backdrop-blur-xl sticky top-0 h-screen">
         <div className="p-5 border-b border-slate-800/80 flex items-center gap-3">
           <img
             src={db.settings.logo_url || HALL_LOGO_SRC}
@@ -191,7 +193,7 @@ export const Layout: React.FC<LayoutProps> = ({
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 pb-20 lg:pb-0">
         {/* Top Bar (3 zones: Brand/Page Title — Search — Primary Action) */}
-        <header className="no-print sticky top-0 z-30 border-b border-slate-800/80 bg-[#060913]/90 backdrop-blur-xl px-4 lg:px-8 py-3 flex items-center justify-between gap-4">
+        <header className="no-print sticky top-0 z-30 border-b border-slate-800/80 bg-white/90 dark:bg-[#060913]/90 backdrop-blur-xl px-4 lg:px-8 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2.5 min-w-0">
             <img
               src={db.settings.logo_url || HALL_LOGO_SRC}
@@ -215,7 +217,7 @@ export const Layout: React.FC<LayoutProps> = ({
               className="w-full bg-slate-900/80 border border-slate-800 rounded-xl py-2 pl-9 pr-3 rtl:pl-3 rtl:pr-9 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-cyan-500"
             />
             {searchResults.length > 0 && (
-              <div className="absolute left-0 right-0 mt-1.5 rounded-xl border border-slate-700 bg-[#0B1120] shadow-2xl overflow-hidden z-50">
+              <div className="absolute left-0 right-0 mt-1.5 rounded-xl border border-slate-700 bg-white dark:bg-[#0B1120] shadow-2xl overflow-hidden z-50">
                 {searchResults.map((bk) => (
                   <button
                     key={bk.id}
@@ -245,6 +247,22 @@ export const Layout: React.FC<LayoutProps> = ({
 
           {/* Right Actions */}
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={toggleTheme}
+              title={theme === 'dark' ? tr('lightMode', lang) : tr('darkMode', lang)}
+              aria-label={theme === 'dark' ? tr('lightMode', lang) : tr('darkMode', lang)}
+              className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl border border-slate-800 bg-slate-900/70 hover:border-cyan-500/40 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0"
+            >
+              {theme === 'dark' ? (
+                <Sun className="w-4 h-4 text-amber-300" />
+              ) : (
+                <Moon className="w-4 h-4 text-violet-400" />
+              )}
+              <span className="hidden md:inline">
+                {theme === 'dark' ? tr('lightMode', lang) : tr('darkMode', lang)}
+              </span>
+            </button>
             <button
               type="button"
               onClick={toggleLang}
@@ -277,7 +295,7 @@ export const Layout: React.FC<LayoutProps> = ({
               className="w-full bg-slate-900/80 border border-slate-800 rounded-xl py-2 pl-9 pr-3 rtl:pl-3 rtl:pr-9 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-cyan-500"
             />
             {searchResults.length > 0 && (
-              <div className="absolute left-0 right-0 mt-1.5 rounded-xl border border-slate-700 bg-[#0B1120] shadow-2xl overflow-hidden z-50">
+              <div className="absolute left-0 right-0 mt-1.5 rounded-xl border border-slate-700 bg-white dark:bg-[#0B1120] shadow-2xl overflow-hidden z-50">
                 {searchResults.map((bk) => (
                   <button
                     key={bk.id}
@@ -307,7 +325,7 @@ export const Layout: React.FC<LayoutProps> = ({
       </div>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="no-print lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-slate-800 bg-[#090E1B]/95 backdrop-blur-xl px-2 py-1.5 flex items-center justify-around">
+      <nav className="no-print lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-slate-800 bg-white/95 dark:bg-[#090E1B]/95 backdrop-blur-xl px-2 py-1.5 flex items-center justify-around">
         {mobilePrimary.map((item) => {
           const active = activeTab === item.id;
           return (
@@ -344,7 +362,7 @@ export const Layout: React.FC<LayoutProps> = ({
       {/* Mobile More Drawer */}
       {moreDrawerOpen && (
         <div className="no-print lg:hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end">
-          <div className="w-full rounded-t-2xl border-t border-slate-700 bg-[#0B1120] p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+          <div className="w-full rounded-t-2xl border-t border-slate-700 bg-white dark:bg-[#0B1120] p-5 space-y-4 max-h-[75vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm font-bold text-white">{currentUser?.full_name}</div>

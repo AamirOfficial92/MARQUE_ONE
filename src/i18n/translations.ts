@@ -80,6 +80,11 @@ export const TRANSLATIONS = {
     dueSoon: 'Due Soon',
     previewModeBadge: 'Local Preview Storage',
     supabaseLiveBadge: 'Supabase Live Connected',
+    theme: 'Theme',
+    darkMode: 'Dark Mode',
+    lightMode: 'Light Mode',
+    systemDefault: 'System Default',
+    appearance: 'Appearance & Theme',
   },
   ur: {
     appTitle: 'مارکی 1',
@@ -160,6 +165,11 @@ export const TRANSLATIONS = {
     dueSoon: 'جلد واجب الادا',
     previewModeBadge: 'لوکل پری ویو اسٹوریج',
     supabaseLiveBadge: 'سوپابیس لائیو منسلک',
+    theme: 'تھیم',
+    darkMode: 'ڈارک موڈ',
+    lightMode: 'لائٹ موڈ',
+    systemDefault: 'سسٹم ڈیفالٹ',
+    appearance: 'ظاہری شکل اور تھیم',
   },
 } as const;
 

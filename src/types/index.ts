@@ -8,6 +8,8 @@ export type PaymentMode = 'Cash' | 'Online';
 
 export type Language = 'en' | 'ur';
 
+export type ThemeMode = 'dark' | 'light';
+
 export type LateChargeMethod = 'none' | 'fixed' | 'percent_rent' | 'per_hour' | 'per_30min';
 
 export type DiscountType = 'fixed' | 'percent';
@@ -34,6 +36,7 @@ export interface UserProfile {
   phone: string;
   role: UserRole;
   is_active: boolean;
+  preferred_theme?: ThemeMode | null;
   created_at: string;
 }
 
