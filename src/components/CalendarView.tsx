@@ -1,9 +1,21 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { translateFloor, translateStatus } from '../i18n/translations';
+import {
+  getWeekdayNames,
+  pickLocalized,
+  translateEventType,
+  translateFloor,
+  translateStatus,
+} from '../i18n/translations';
 import { Booking, FloorName } from '../types';
-import { addDaysISO, formatDateDisplay, formatTime12h, todayISO } from '../utils/formatters';
+import {
+  addDaysISO,
+  formatDateDisplay,
+  formatTime12h,
+  normalizeWesternDigits,
+  todayISO,
+} from '../utils/formatters';
 
 interface CalendarViewProps {
   onSelectBooking: (booking: Booking) => void;
@@ -12,8 +24,12 @@ interface CalendarViewProps {
 
 type CalMode = 'month' | 'week' | 'day';
 
-export const CalendarView: React.FC<CalendarViewProps> = ({ onSelectBooking, onCreateOnDate }) => {
+export const CalendarView: React.FC<CalendarViewProps> = ({
+  onSelectBooking,
+  onCreateOnDate,
+}) => {
   const { db, lang, can } = useApp();
+  const isUr = lang === 'ur';
   const [mode, setMode] = useState<CalMode>('month');
   const [cursorDate, setCursorDate] = useState<string>(todayISO());
   const [floorFilter, setFloorFilter] = useState<'ALL' | FloorName>('ALL');
@@ -42,7 +58,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onSelectBooking, onC
     if (mode === 'month') {
       const d = new Date(year, month + delta, 1);
       setCursorDate(
-        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+          d.getDate()
+        ).padStart(2, '0')}`
       );
     } else if (mode === 'week') {
       setCursorDate(addDaysISO(cursorDate, delta * 7));
@@ -51,7 +69,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onSelectBooking, onC
     }
   };
 
-  // Month grid cells
   const monthCells = useMemo(() => {
     const firstOfMonth = new Date(year, month, 1);
     const startWeekday = firstOfMonth.getDay();
@@ -65,7 +82,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onSelectBooking, onC
     return cells;
   }, [year, month]);
 
-  // Week 7 days starting Sunday of cursorDate
   const weekDays = useMemo(() => {
     const d = new Date(`${cursorDate}T00:00:00`);
     const sundayOffset = -d.getDay();
@@ -73,7 +89,20 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onSelectBooking, onC
   }, [cursorDate]);
 
   const floorsList: Array<'ALL' | FloorName> = ['ALL', 'First', 'Second', 'Third', 'Full Hall'];
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const dayNames = getWeekdayNames(lang);
+
+  const monthHeaderLabel = normalizeWesternDigits(
+    parsedCursor.toLocaleDateString(isUr ? 'ur-PK-u-nu-latn' : 'en-US', {
+      month: 'long',
+      year: 'numeric',
+    })
+  );
+
+  const modeLabels: Record<CalMode, string> = {
+    month: isUr ? 'ماہ' : 'Month',
+    week: isUr ? 'ہفتہ' : 'Week',
+    day: isUr ? 'دن' : 'Day',
+  };
 
   return (
     <div className="space-y-5">
@@ -88,9 +117,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onSelectBooking, onC
             <ChevronLeft className="w-4 h-4 rtl:rotate-180" />
           </button>
           <div className="min-w-[160px] text-center font-semibold text-sm text-white">
-            {mode === 'month'
-              ? parsedCursor.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-              : formatDateDisplay(cursorDate, lang)}
+            {mode === 'month' ? monthHeaderLabel : formatDateDisplay(cursorDate, lang)}
           </div>
           <button
             type="button"
@@ -104,7 +131,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onSelectBooking, onC
             onClick={() => setCursorDate(todayISO())}
             className="px-3 py-1.5 rounded-xl border border-slate-800 bg-slate-900/70 text-xs text-cyan-300 hover:border-cyan-500/40"
           >
-            Today
+            {isUr ? 'آج' : 'Today'}
           </button>
         </div>
 
@@ -121,7 +148,11 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onSelectBooking, onC
                   : 'text-slate-400 hover:text-slate-200 border border-transparent'
               }`}
             >
-              {f === 'ALL' ? (lang === 'ur' ? 'تمام فلورز' : 'All Floors') : translateFloor(f, lang)}
+              {f === 'ALL'
+                ? isUr
+                  ? 'تمام فلورز'
+                  : 'All Floors'
+                : translateFloor(f, lang, db.floors)}
             </button>
           ))}
         </div>
@@ -133,13 +164,13 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onSelectBooking, onC
               key={m}
               type="button"
               onClick={() => setMode(m)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-colors whitespace-nowrap ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
                 mode === m
                   ? 'bg-violet-500/25 text-violet-200 border border-violet-500/40'
                   : 'text-slate-400 hover:text-slate-200 border border-transparent'
               }`}
             >
-              {m}
+              {modeLabels[m]}
             </button>
           ))}
         </div>
@@ -151,8 +182,11 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onSelectBooking, onC
           .filter((e) => !e.deleted_at)
           .map((et) => (
             <span key={et.id} className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: et.color_hex }} />
-              <span>{lang === 'ur' ? et.name_ur : et.name_en}</span>
+              <span
+                className="w-2.5 h-2.5 rounded-sm inline-block"
+                style={{ backgroundColor: et.color_hex }}
+              />
+              <span>{pickLocalized(et.name_en, et.name_ur, lang)}</span>
             </span>
           ))}
       </div>
@@ -170,7 +204,12 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onSelectBooking, onC
           <div className="grid grid-cols-7 auto-rows-[minmax(105px,auto)]">
             {monthCells.map((cell, idx) => {
               if (!cell.iso) {
-                return <div key={`empty-${idx}`} className="border-b border-e border-slate-800/60 bg-slate-950/30" />;
+                return (
+                  <div
+                    key={`empty-${idx}`}
+                    className="border-b border-e border-slate-800/60 bg-slate-950/30"
+                  />
+                );
               }
               const dayBookings = filteredBookings.filter((b) => b.event_date === cell.iso);
               const isToday = cell.iso === todayISO();
@@ -193,7 +232,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onSelectBooking, onC
                       <button
                         type="button"
                         onClick={() => onCreateOnDate(cell.iso!)}
-                        title="Book this date"
+                        title={isUr ? 'اس تاریخ پر بکنگ کریں' : 'Book this date'}
                         className="p-1 rounded text-slate-500 hover:text-cyan-300 hover:bg-slate-800/80"
                       >
                         <Plus className="w-3 h-3" />
@@ -203,6 +242,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onSelectBooking, onC
                   <div className="space-y-1">
                     {dayBookings.map((bk) => {
                       const col = getEventColor(bk.event_type);
+                      const floorsStr = bk.floors
+                        .map((f) => translateFloor(f, lang, db.floors))
+                        .join(isUr ? '، ' : ', ');
                       return (
                         <button
                           key={bk.id}
@@ -215,8 +257,11 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onSelectBooking, onC
                           }}
                         >
                           <div className="font-semibold truncate">{bk.customer_name}</div>
-                          <div className="text-[10px] text-slate-700 dark:text-slate-300 truncate tabular-nums">
-                            {bk.floors.join(', ')} · {formatTime12h(bk.start_time)}
+                          <div className="text-[10px] text-slate-700 dark:text-slate-300 truncate">
+                            {floorsStr} ·{' '}
+                            <span className="tabular-nums">
+                              {formatTime12h(bk.start_time, lang)}
+                            </span>
                           </div>
                         </button>
                       );
@@ -267,17 +312,27 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onSelectBooking, onC
                         className="w-full text-start p-2.5 rounded-xl border transition-transform hover:scale-[1.01]"
                         style={{ borderColor: `${col}70`, backgroundColor: `${col}1F` }}
                       >
-                        <div className="text-xs font-bold text-white truncate">{bk.event_type}</div>
-                        <div className="text-xs text-slate-200 truncate mt-0.5">{bk.customer_name}</div>
-                        <div className="text-[11px] text-slate-300 mt-1 tabular-nums">
-                          {formatTime12h(bk.start_time)}–{formatTime12h(bk.end_time)}
+                        <div className="text-xs font-bold text-white truncate">
+                          {translateEventType(bk.event_type, lang, db.eventTypes)}
                         </div>
-                        <div className="text-[11px] text-cyan-300 mt-0.5">{bk.floors.join(', ')}</div>
+                        <div className="text-xs text-slate-200 truncate mt-0.5">
+                          {bk.customer_name}
+                        </div>
+                        <div className="text-[11px] text-slate-300 mt-1 tabular-nums">
+                          {formatTime12h(bk.start_time, lang)}–{formatTime12h(bk.end_time, lang)}
+                        </div>
+                        <div className="text-[11px] text-cyan-300 mt-0.5">
+                          {bk.floors
+                            .map((f) => translateFloor(f, lang, db.floors))
+                            .join(isUr ? '، ' : ', ')}
+                        </div>
                       </button>
                     );
                   })}
                   {dayBookings.length === 0 && (
-                    <div className="text-[11px] text-slate-600 py-4 text-center">Available</div>
+                    <div className="text-[11px] text-slate-600 py-4 text-center">
+                      {isUr ? 'خالی' : 'Available'}
+                    </div>
                   )}
                 </div>
               </div>
@@ -300,7 +355,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onSelectBooking, onC
                 className="px-3 py-1.5 rounded-xl bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 text-xs font-semibold flex items-center gap-1.5"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Book This Date</span>
+                <span>{isUr ? 'اس تاریخ پر بکنگ کریں' : 'Book This Date'}</span>
               </button>
             )}
           </div>
@@ -309,12 +364,16 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onSelectBooking, onC
               const floorBookings = filteredBookings.filter(
                 (b) =>
                   b.event_date === cursorDate &&
-                  (b.floors.includes(fl) || (fl !== 'Full Hall' && b.floors.includes('Full Hall')))
+                  (b.floors.includes(fl) ||
+                    (fl !== 'Full Hall' && b.floors.includes('Full Hall')))
               );
               return (
-                <div key={fl} className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
+                <div
+                  key={fl}
+                  className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-3"
+                >
                   <div className="text-xs font-semibold text-cyan-300 border-b border-slate-800 pb-2">
-                    {translateFloor(fl, lang)}
+                    {translateFloor(fl, lang, db.floors)}
                   </div>
                   {floorBookings.map((bk) => {
                     const col = getEventColor(bk.event_type);
@@ -326,19 +385,28 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ onSelectBooking, onC
                         className="w-full text-start p-3 rounded-xl border"
                         style={{ borderColor: `${col}66`, backgroundColor: `${col}1E` }}
                       >
-                        <div className="text-xs font-bold text-white">{bk.booking_code}</div>
+                        <div className="text-xs font-bold text-white tabular-nums">
+                          {bk.booking_code}
+                        </div>
                         <div className="text-xs text-slate-200 mt-0.5">{bk.customer_name}</div>
-                        <div className="text-[11px] text-slate-300 mt-1 tabular-nums">
-                          {bk.event_type} · {bk.start_time}–{bk.end_time}
+                        <div className="text-[11px] text-slate-300 mt-1">
+                          {translateEventType(bk.event_type, lang, db.eventTypes)} ·{' '}
+                          <span className="tabular-nums">
+                            {formatTime12h(bk.start_time, lang)}–{formatTime12h(bk.end_time, lang)}
+                          </span>
                         </div>
                         <div className="text-[11px] text-amber-300 mt-0.5">
-                          {translateStatus(bk.status, lang)} · {bk.guests_count} guests
+                          {translateStatus(bk.status, lang)} ·{' '}
+                          <span className="tabular-nums">{bk.guests_count}</span>{' '}
+                          {isUr ? 'مہمان' : 'guests'}
                         </div>
                       </button>
                     );
                   })}
                   {floorBookings.length === 0 && (
-                    <div className="text-xs text-slate-500 py-4">Open for booking</div>
+                    <div className="text-xs text-slate-500 py-4">
+                      {isUr ? 'بکنگ کے لیے دستیاب' : 'Open for booking'}
+                    </div>
                   )}
                 </div>
               );

@@ -304,6 +304,17 @@ html.light ::-webkit-scrollbar-thumb:hover {
     color: #be123c !important;
   }
 
+  .print-only-sheet[dir='rtl'],
+  .print-only-sheet[dir='rtl'] * {
+    font-family: var(--font-urdu), var(--font-sans) !important;
+  }
+
+  .print-only-sheet[dir='rtl'] .tabular-nums {
+    font-family: var(--font-mono), monospace !important;
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
   .print-only-sheet [class*="border-slate-800"] {
     border-color: #cbd5e1 !important;
   }
@@ -328,6 +339,18 @@ html.light ::-webkit-scrollbar-thumb:hover {
     color: #000000 !important;
     box-shadow: none !important;
     border: none !important;
+  }
+
+  body.print-thermal .print-thermal-sheet[dir='rtl'],
+  body.print-thermal .print-thermal-sheet[dir='rtl'] * {
+    font-family: var(--font-urdu), var(--font-sans) !important;
+    line-height: 2.0 !important;
+  }
+
+  body.print-thermal .print-thermal-sheet[dir='rtl'] .tabular-nums {
+    font-family: var(--font-mono), monospace !important;
+    direction: ltr;
+    unicode-bidi: isolate;
   }
 
   body.print-thermal .print-thermal-sheet * {

@@ -4,11 +4,21 @@ import {
   ChargeCategory,
   EventTypeItem,
   ExpenseCategory,
+  FloorConfig,
   HallSettings,
 } from '../types';
 
 export const HALL_LOGO_SRC = '/src/assets/images/marquee_logo_1795763096758.jpg';
 export const DEFAULT_HALL_ID = '11111111-1111-4111-8111-111111111101';
+
+export function createDefaultFloorsForHall(hallId: string): FloorConfig[] {
+  return [
+    { id: `fl-1-${hallId}`, hall_id: hallId, floor_key: 'First', name_en: 'First Floor', name_ur: 'پہلا فلور', sort_order: 1 },
+    { id: `fl-2-${hallId}`, hall_id: hallId, floor_key: 'Second', name_en: 'Second Floor', name_ur: 'دوسرا فلور', sort_order: 2 },
+    { id: `fl-3-${hallId}`, hall_id: hallId, floor_key: 'Third', name_en: 'Third Floor', name_ur: 'تیسرا فلور', sort_order: 3 },
+    { id: `fl-full-${hallId}`, hall_id: hallId, floor_key: 'Full Hall', name_en: 'Full Hall (All 3 Floors)', name_ur: 'مکمل ہال (تینوں فلور)', sort_order: 4 },
+  ];
+}
 
 export function createDefaultHallSettings(hallId: string, overrides?: Partial<HallSettings>): HallSettings {
   const year = new Date().getFullYear();
@@ -38,6 +48,7 @@ export function createDefaultHallSettings(hallId: string, overrides?: Partial<Ha
       {
         id: `sea-wedding-${hallId}`,
         name: 'Wedding Peak Season',
+        name_ur: 'شادیوں کا پیک سیزن',
         start_date: `${year}-11-01`,
         end_date: `${year + 1}-02-28`,
         rates: {
@@ -50,6 +61,7 @@ export function createDefaultHallSettings(hallId: string, overrides?: Partial<Ha
       {
         id: `sea-off-${hallId}`,
         name: 'Summer Off-Season',
+        name_ur: 'موسم گرما / آف سیزن',
         start_date: `${year}-05-01`,
         end_date: `${year}-08-31`,
         rates: {
@@ -77,6 +89,7 @@ export function createEmptyDatabase(): AppDatabase {
   const defaultSettings = createDefaultHallSettings(DEFAULT_HALL_ID);
   return {
     halls: [],
+    floors: [],
     hallSettings: [],
     settings: defaultSettings,
     perHallSequences: {},
@@ -111,6 +124,7 @@ export function createNewHallCatalogTemplates(
   chargeCategories: ChargeCategory[];
   chargesCatalog: ChargeCatalogItem[];
   expenseCategories: ExpenseCategory[];
+  floors: FloorConfig[];
 } {
   const eventTypes: EventTypeItem[] = [
     { id: makeId(), hall_id: hallId, name_en: 'Baraat', name_ur: 'بارات', color_hex: '#F59E0B', is_default: true, deleted_at: null },
@@ -137,18 +151,18 @@ export function createNewHallCatalogTemplates(
   ];
 
   const chargesCatalog: ChargeCatalogItem[] = [
-    { id: makeId(), hall_id: hallId, category_id: ccDefaultId, name_en: 'Couple Entry', name_ur: 'دولہا دلہن انٹری', default_rate: 0, unit_label: 'Package', is_default_package: true, deleted_at: null },
-    { id: makeId(), hall_id: hallId, category_id: ccDefaultId, name_en: 'Smoke', name_ur: 'اسموک ایفیکٹ', default_rate: 0, unit_label: 'Package', is_default_package: true, deleted_at: null },
-    { id: makeId(), hall_id: hallId, category_id: ccDefaultId, name_en: 'Lighting', name_ur: 'لائٹنگ سسٹم', default_rate: 0, unit_label: 'Package', is_default_package: true, deleted_at: null },
-    { id: makeId(), hall_id: hallId, category_id: ccDefaultId, name_en: 'Sound', name_ur: 'ساؤنڈ سسٹم', default_rate: 0, unit_label: 'Package', is_default_package: true, deleted_at: null },
-    { id: makeId(), hall_id: hallId, category_id: ccDecorId, name_en: 'Partition', name_ur: 'پارٹیشن / پردہ', default_rate: 12000, unit_label: 'Unit', is_default_package: false, deleted_at: null },
-    { id: makeId(), hall_id: hallId, category_id: ccDecorId, name_en: 'Decoration', name_ur: 'اسٹیج ڈیکوریشن', default_rate: 45000, unit_label: 'Event', is_default_package: false, deleted_at: null },
-    { id: makeId(), hall_id: hallId, category_id: ccDecorId, name_en: 'Fresh Flowers', name_ur: 'تازہ پھولوں کی سجاوٹ', default_rate: 35000, unit_label: 'Event', is_default_package: false, deleted_at: null },
-    { id: makeId(), hall_id: hallId, category_id: ccDecorId, name_en: 'Artificial Flowers', name_ur: 'مصنوعی پھولوں کی سجاوٹ', default_rate: 18000, unit_label: 'Event', is_default_package: false, deleted_at: null },
-    { id: makeId(), hall_id: hallId, category_id: ccServicesId, name_en: 'Table Service', name_ur: 'ٹیبل سروس ویٹرز', default_rate: 15000, unit_label: 'Crew', is_default_package: false, deleted_at: null },
-    { id: makeId(), hall_id: hallId, category_id: ccServicesId, name_en: 'VIP Lounge Setup', name_ur: 'وی آئی پی لاؤنج سیٹ اپ', default_rate: 18000, unit_label: 'Setup', is_default_package: false, deleted_at: null },
-    { id: makeId(), hall_id: hallId, category_id: ccBeveragesId, name_en: 'Cold Drinks', name_ur: 'کولڈ ڈرنکس سروس', default_rate: 1600, unit_label: 'Crate', is_default_package: false, is_crate_service: true, deleted_at: null },
-    { id: makeId(), hall_id: hallId, category_id: ccOutdoorId, name_en: 'Outdoor Barbecue Space', name_ur: 'آؤٹ ڈور باربی کیو اسپیس', default_rate: 5000, unit_label: 'Event', is_default_package: false, deleted_at: null },
+    { id: makeId(), hall_id: hallId, category_id: ccDefaultId, name_en: 'Couple Entry', name_ur: 'دولہا دلہن انٹری', default_rate: 0, unit_label: 'Package', unit_label_ur: 'پیکج', is_default_package: true, deleted_at: null },
+    { id: makeId(), hall_id: hallId, category_id: ccDefaultId, name_en: 'Smoke', name_ur: 'اسموک ایفیکٹ', default_rate: 0, unit_label: 'Package', unit_label_ur: 'پیکج', is_default_package: true, deleted_at: null },
+    { id: makeId(), hall_id: hallId, category_id: ccDefaultId, name_en: 'Lighting', name_ur: 'لائٹنگ سسٹم', default_rate: 0, unit_label: 'Package', unit_label_ur: 'پیکج', is_default_package: true, deleted_at: null },
+    { id: makeId(), hall_id: hallId, category_id: ccDefaultId, name_en: 'Sound', name_ur: 'ساؤنڈ سسٹم', default_rate: 0, unit_label: 'Package', unit_label_ur: 'پیکج', is_default_package: true, deleted_at: null },
+    { id: makeId(), hall_id: hallId, category_id: ccDecorId, name_en: 'Partition', name_ur: 'پارٹیشن / پردہ', default_rate: 12000, unit_label: 'Unit', unit_label_ur: 'یونٹ', is_default_package: false, deleted_at: null },
+    { id: makeId(), hall_id: hallId, category_id: ccDecorId, name_en: 'Decoration', name_ur: 'اسٹیج ڈیکوریشن', default_rate: 45000, unit_label: 'Event', unit_label_ur: 'تقریب', is_default_package: false, deleted_at: null },
+    { id: makeId(), hall_id: hallId, category_id: ccDecorId, name_en: 'Fresh Flowers', name_ur: 'تازہ پھولوں کی سجاوٹ', default_rate: 35000, unit_label: 'Event', unit_label_ur: 'تقریب', is_default_package: false, deleted_at: null },
+    { id: makeId(), hall_id: hallId, category_id: ccDecorId, name_en: 'Artificial Flowers', name_ur: 'مصنوعی پھولوں کی سجاوٹ', default_rate: 18000, unit_label: 'Event', unit_label_ur: 'تقریب', is_default_package: false, deleted_at: null },
+    { id: makeId(), hall_id: hallId, category_id: ccServicesId, name_en: 'Table Service', name_ur: 'ٹیبل سروس ویٹرز', default_rate: 15000, unit_label: 'Crew', unit_label_ur: 'عملہ', is_default_package: false, deleted_at: null },
+    { id: makeId(), hall_id: hallId, category_id: ccServicesId, name_en: 'VIP Lounge Setup', name_ur: 'وی آئی پی لاؤنج سیٹ اپ', default_rate: 18000, unit_label: 'Setup', unit_label_ur: 'سیٹ اپ', is_default_package: false, deleted_at: null },
+    { id: makeId(), hall_id: hallId, category_id: ccBeveragesId, name_en: 'Cold Drinks', name_ur: 'کولڈ ڈرنکس سروس', default_rate: 1600, unit_label: 'Crate', unit_label_ur: 'کریٹ', is_default_package: false, is_crate_service: true, deleted_at: null },
+    { id: makeId(), hall_id: hallId, category_id: ccOutdoorId, name_en: 'Outdoor Barbecue Space', name_ur: 'آؤٹ ڈور باربی کیو اسپیس', default_rate: 5000, unit_label: 'Event', unit_label_ur: 'تقریب', is_default_package: false, deleted_at: null },
   ];
 
   const expenseCategories: ExpenseCategory[] = [
@@ -165,5 +179,7 @@ export function createNewHallCatalogTemplates(
     { id: makeId(), hall_id: hallId, name_en: 'Other', name_ur: 'دیگر اخراجات', deleted_at: null },
   ];
 
-  return { eventTypes, chargeCategories, chargesCatalog, expenseCategories };
+  const floors = createDefaultFloorsForHall(hallId);
+
+  return { eventTypes, chargeCategories, chargesCatalog, expenseCategories, floors };
 }

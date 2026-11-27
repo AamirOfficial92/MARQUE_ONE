@@ -1,8 +1,14 @@
 import React, { useState } from 'react';
 import { Ban, CheckCircle2, ShieldAlert, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { tr, translatePaymentMode } from '../i18n/translations';
 import { Booking, PaymentMode } from '../types';
-import { calculateBookingFinancials, formatPKR, todayISO } from '../utils/formatters';
+import {
+  calculateBookingFinancials,
+  formatDateDisplay,
+  formatPKR,
+  todayISO,
+} from '../utils/formatters';
 
 interface CancelBookingModalProps {
   booking: Booking;
@@ -10,7 +16,8 @@ interface CancelBookingModalProps {
 }
 
 export const CancelBookingModal: React.FC<CancelBookingModalProps> = ({ booking, onClose }) => {
-  const { db, currentUser, cancelBooking, submitApprovalRequest } = useApp();
+  const { db, lang, currentUser, cancelBooking, submitApprovalRequest } = useApp();
+  const isUr = lang === 'ur';
   const fin = calculateBookingFinancials(booking, db.bookingItems, db.payments, db.expenses);
   const isManager = currentUser?.role === 'manager';
 
@@ -38,7 +45,9 @@ export const CancelBookingModal: React.FC<CancelBookingModalProps> = ({ booking,
       amount_paid_so_far: Math.max(0, Number(amountPaidSoFar) || 0),
       deduction_amount: Math.max(0, Number(deductionAmount) || 0),
       refund_amount: Math.max(0, Number(refundAmount) || 0),
-      reason: reason.trim() || 'Cancelled by customer request',
+      reason:
+        reason.trim() ||
+        (isUr ? 'گاہک کی درخواست پر منسوخ کی گئی' : 'Cancelled by customer request'),
       refund_date: refundDate,
       refund_mode: refundMode,
       cancelled_by: currentUser?.full_name || 'Admin',
@@ -56,7 +65,12 @@ export const CancelBookingModal: React.FC<CancelBookingModalProps> = ({ booking,
       });
       setSaving(false);
       if (!res.ok) {
-        setErrorMsg(res.error || 'Could not submit cancellation request.');
+        setErrorMsg(
+          res.error ||
+            (isUr
+              ? 'منسوخی کی درخواست جمع نہ ہو سکی۔'
+              : 'Could not submit cancellation request.')
+        );
         return;
       }
       setSubmittedRequest(true);
@@ -75,13 +89,20 @@ export const CancelBookingModal: React.FC<CancelBookingModalProps> = ({ booking,
           <div className="flex items-center gap-2">
             <Ban className="w-4 h-4 text-rose-400" />
             <div>
-              <h3 className="text-sm font-bold text-white">Cancel Booking · {booking.booking_code}</h3>
-              <p className="text-[11px] text-slate-400">{booking.customer_name} ({booking.event_date})</p>
+              <h3 className="text-sm font-bold text-white">
+                {tr('cancelBooking', lang)} ·{' '}
+                <span className="tabular-nums">{booking.booking_code}</span>
+              </h3>
+              <p className="text-[11px] text-slate-400">
+                {booking.customer_name} (
+                <span className="tabular-nums">{formatDateDisplay(booking.event_date, lang)}</span>)
+              </p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
+            aria-label={tr('close', lang)}
             className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-white"
           >
             <X className="w-4 h-4" />
@@ -91,17 +112,22 @@ export const CancelBookingModal: React.FC<CancelBookingModalProps> = ({ booking,
         {submittedRequest ? (
           <div className="p-6 space-y-4 text-xs text-center">
             <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
-            <div className="text-sm font-bold text-white">Cancellation &amp; Refund Request Submitted</div>
+            <div className="text-sm font-bold text-white">
+              {isUr
+                ? 'منسوخی اور رقم واپسی کی درخواست جمع ہو گئی'
+                : 'Cancellation & Refund Request Submitted'}
+            </div>
             <p className="text-slate-300">
-              Your request for <strong>{booking.booking_code}</strong> has been sent to your Hall Admin for approval.
-              The booking remains active until approved.
+              {isUr
+                ? `بکنگ ${booking.booking_code} کی درخواست منظوری کے لیے ہال ایڈمن کو بھیج دی گئی ہے۔ منظوری تک بکنگ فعال رہے گی۔`
+                : `Your request for ${booking.booking_code} has been sent to your Hall Admin for approval. The booking remains active until approved.`}
             </p>
             <button
               type="button"
               onClick={onClose}
               className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-semibold"
             >
-              Done
+              {isUr ? 'مکمل' : 'Done'}
             </button>
           </div>
         ) : (
@@ -110,7 +136,9 @@ export const CancelBookingModal: React.FC<CancelBookingModalProps> = ({ booking,
               <div className="p-3 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-200 flex items-start gap-2">
                 <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                 <span>
-                  Managers cannot cancel or issue refunds directly. Submitting this form creates an approval request for your Hall Admin.
+                  {isUr
+                    ? 'مینیجر براہِ راست بکنگ منسوخ یا رقم واپس نہیں کر سکتا۔ یہ فارم جمع کرانے سے ہال ایڈمن کو منظوری کی درخواست بھیج دی جائے گی۔'
+                    : 'Managers cannot cancel or issue refunds directly. Submitting this form creates an approval request for your Hall Admin.'}
                 </span>
               </div>
             )}
@@ -123,18 +151,24 @@ export const CancelBookingModal: React.FC<CancelBookingModalProps> = ({ booking,
 
             <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-3.5 flex items-center justify-between">
               <div>
-                <div className="text-slate-400">Final Agreed Total</div>
-                <div className="font-bold text-white tabular-nums mt-0.5">{formatPKR(fin.grandTotal)}</div>
+                <div className="text-slate-400">{tr('finalAgreedTotal', lang)}</div>
+                <div className="font-bold text-white tabular-nums mt-0.5">
+                  {formatPKR(fin.grandTotal)}
+                </div>
               </div>
               <div className="text-end">
-                <div className="text-slate-400">Payments Recorded</div>
-                <div className="font-bold text-cyan-300 tabular-nums mt-0.5">{formatPKR(fin.totalPaid)}</div>
+                <div className="text-slate-400">{tr('paymentsReceived', lang)}</div>
+                <div className="font-bold text-cyan-300 tabular-nums mt-0.5">
+                  {formatPKR(fin.totalPaid)}
+                </div>
               </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="block text-slate-300 mb-1">Amount Paid So Far</label>
+                <label className="block text-slate-300 mb-1">
+                  {isUr ? 'اب تک وصول شدہ' : 'Amount Paid So Far'}
+                </label>
                 <input
                   type="number"
                   min={0}
@@ -148,7 +182,9 @@ export const CancelBookingModal: React.FC<CancelBookingModalProps> = ({ booking,
                 />
               </div>
               <div>
-                <label className="block text-slate-300 mb-1">Deduction (Charges)</label>
+                <label className="block text-slate-300 mb-1">
+                  {isUr ? 'کٹوتی (چارجز)' : 'Deduction (Charges)'}
+                </label>
                 <input
                   type="number"
                   min={0}
@@ -158,7 +194,9 @@ export const CancelBookingModal: React.FC<CancelBookingModalProps> = ({ booking,
                 />
               </div>
               <div>
-                <label className="block text-slate-300 mb-1">Refund Amount (PKR)</label>
+                <label className="block text-slate-300 mb-1">
+                  {isUr ? 'واپسی رقم (PKR)' : 'Refund Amount (PKR)'}
+                </label>
                 <input
                   type="number"
                   min={0}
@@ -171,7 +209,9 @@ export const CancelBookingModal: React.FC<CancelBookingModalProps> = ({ booking,
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-slate-300 mb-1">Refund Date</label>
+                <label className="block text-slate-300 mb-1">
+                  {isUr ? 'واپسی کی تاریخ' : 'Refund Date'}
+                </label>
                 <input
                   type="date"
                   required
@@ -181,33 +221,43 @@ export const CancelBookingModal: React.FC<CancelBookingModalProps> = ({ booking,
                 />
               </div>
               <div>
-                <label className="block text-slate-300 mb-1">Refund Mode</label>
+                <label className="block text-slate-300 mb-1">
+                  {isUr ? 'واپسی کا طریقہ' : 'Refund Mode'}
+                </label>
                 <select
                   value={refundMode}
                   onChange={(e) => setRefundMode(e.target.value as PaymentMode)}
                   className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
                 >
-                  <option value="Cash">Cash</option>
-                  <option value="Online">Online</option>
+                  <option value="Cash">{translatePaymentMode('Cash', lang)}</option>
+                  <option value="Online">{translatePaymentMode('Online', lang)}</option>
                 </select>
               </div>
             </div>
 
             <div>
-              <label className="block text-slate-300 mb-1">Cancellation Reason *</label>
+              <label className="block text-slate-300 mb-1">
+                {isUr ? 'منسوخی کی وجہ *' : 'Cancellation Reason *'}
+              </label>
               <textarea
                 rows={2}
                 required
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder="Customer reason, date conflict, or terms applied..."
+                placeholder={
+                  isUr
+                    ? 'گاہک کی وجہ، تاریخ کا مسئلہ، یا شرائط...'
+                    : 'Customer reason, date conflict, or terms applied...'
+                }
                 className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
               />
             </div>
 
             {!isManager && (
               <p className="text-[11px] text-slate-400">
-                The booking stays permanently in history as Cancelled, and the floors/time slot are released immediately.
+                {isUr
+                  ? 'بکنگ منسوخ حالت میں ریکارڈ میں محفوظ رہے گی، اور متعلقہ فلورز اور وقت فوراً دستیاب ہو جائیں گے۔'
+                  : 'The booking stays permanently in history as Cancelled, and the floors/time slot are released immediately.'}
               </p>
             )}
 
@@ -217,7 +267,7 @@ export const CancelBookingModal: React.FC<CancelBookingModalProps> = ({ booking,
                 onClick={onClose}
                 className="px-4 py-2 rounded-xl border border-slate-700 text-slate-300 font-semibold"
               >
-                Keep Active
+                {isUr ? 'فعال رکھیں' : 'Keep Active'}
               </button>
               <button
                 type="submit"
@@ -225,10 +275,16 @@ export const CancelBookingModal: React.FC<CancelBookingModalProps> = ({ booking,
                 className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold"
               >
                 {saving
-                  ? 'Submitting...'
+                  ? isUr
+                    ? 'جمع ہو رہا ہے...'
+                    : 'Submitting...'
                   : isManager
-                    ? 'Submit Cancellation Request'
-                    : 'Confirm Cancellation'}
+                  ? isUr
+                    ? 'منسوخی کی درخواست بھیجیں'
+                    : 'Submit Cancellation Request'
+                  : isUr
+                  ? 'منسوخی کی تصدیق کریں'
+                  : 'Confirm Cancellation'}
               </button>
             </div>
           </form>

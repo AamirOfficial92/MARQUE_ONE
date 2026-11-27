@@ -2,6 +2,13 @@ import React, { useEffect } from 'react';
 import { Printer, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { HALL_LOGO_SRC } from '../data/seedData';
+import {
+  pickLocalized,
+  tr,
+  translateEventType,
+  translateFloor,
+  translatePaymentMode,
+} from '../i18n/translations';
 import { Booking, Payment } from '../types';
 import { calculateBookingFinancials, formatDateDisplay, formatPKR } from '../utils/formatters';
 
@@ -12,9 +19,15 @@ interface ReceiptModalProps {
 }
 
 export const ReceiptModal: React.FC<ReceiptModalProps> = ({ payment, booking, onClose }) => {
-  const { db } = useApp();
+  const { db, lang } = useApp();
   const settings = db.settings;
+  const hallName = pickLocalized(settings.hall_name, settings.hall_name_ur, lang);
   const fin = calculateBookingFinancials(booking, db.bookingItems, db.payments, db.expenses);
+
+  const floorLabel = booking.floors
+    .map((f) => translateFloor(f, lang, db.floors))
+    .join(lang === 'ur' ? '، ' : ' / ');
+  const eventTypeLabel = translateEventType(booking.event_type, lang, db.eventTypes);
 
   useEffect(() => {
     document.body.classList.add('print-thermal');
@@ -28,8 +41,12 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ payment, booking, on
       <div className="w-full max-w-sm space-y-3 my-auto">
         <div className="no-print glass-panel rounded-2xl p-3 flex items-center justify-between">
           <div>
-            <div className="text-xs font-semibold text-white tabular-nums">{payment.receipt_number}</div>
-            <div className="text-[11px] text-cyan-300">80mm Thermal Receipt Format</div>
+            <div className="text-xs font-semibold text-white tabular-nums">
+              {payment.receipt_number}
+            </div>
+            <div className="text-[11px] text-cyan-300">
+              {lang === 'ur' ? '80 ملی میٹر تھرمل رسید فارمیٹ' : '80mm Thermal Receipt Format'}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -38,11 +55,12 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ payment, booking, on
               className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold flex items-center gap-1.5"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>Print 80mm</span>
+              <span>{tr('printThermalReceipt', lang)}</span>
             </button>
             <button
               type="button"
               onClick={onClose}
+              aria-label={tr('close', lang)}
               className="p-2 rounded-xl border border-slate-700 text-slate-400 hover:text-white"
             >
               <X className="w-4 h-4" />
@@ -50,93 +68,109 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ payment, booking, on
           </div>
         </div>
 
-        {/* Compact 80mm Thermal Printer Layout */}
-        <div className="print-thermal-sheet mx-auto w-full max-w-[310px] bg-white text-slate-900 rounded-xl p-4 shadow-2xl border border-slate-300 font-mono text-[11px] leading-snug space-y-2.5">
+        {/* Compact 80mm Thermal Printer Layout (Strictly Single Language, Black on White) */}
+        <div
+          dir={lang === 'ur' ? 'rtl' : 'ltr'}
+          className={`print-thermal-sheet mx-auto w-full max-w-[310px] bg-white text-slate-900 rounded-xl p-4 shadow-2xl border border-slate-300 text-[11px] leading-snug space-y-2.5 ${
+            lang === 'ur' ? 'font-urdu' : 'font-mono'
+          }`}
+        >
           <div className="text-center border-b border-dashed border-slate-400 pb-2.5 space-y-1">
             <img
               src={settings.logo_url || HALL_LOGO_SRC}
-              alt={settings.hall_name}
+              alt={hallName}
               referrerPolicy="no-referrer"
               className="w-10 h-10 rounded-lg object-cover border border-slate-300 mx-auto"
             />
-            <div className="text-sm font-bold tracking-tight">{settings.hall_name}</div>
-            <div className="font-urdu text-xs font-bold" dir="rtl">{settings.hall_name_ur}</div>
-            <div className="text-[10px] text-slate-700">{settings.phone}</div>
+            <div className="text-sm font-bold tracking-tight">{hallName}</div>
+            <div className="text-[10px] text-slate-700 tabular-nums">{settings.phone}</div>
             <div className="text-[10px] font-bold uppercase tracking-wider pt-0.5">
-              Payment Receipt / رسید ادائیگی
-            </div>
-          </div>
-
-          <div className="border-b border-dashed border-slate-400 pb-2 space-y-1 tabular-nums">
-            <div className="flex justify-between">
-              <span className="text-slate-600">Receipt #:</span>
-              <span className="font-bold">{payment.receipt_number}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-600">Date:</span>
-              <span>{formatDateDisplay(payment.payment_date, 'en')}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-600">Booking:</span>
-              <span className="font-bold">{booking.booking_code}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-600">Event Date:</span>
-              <span>{formatDateDisplay(booking.event_date, 'en')}</span>
+              {tr('paymentReceiptTitle', lang)}
             </div>
           </div>
 
           <div className="border-b border-dashed border-slate-400 pb-2 space-y-1">
             <div className="flex justify-between gap-2">
-              <span className="text-slate-600">Customer:</span>
-              <span className="font-bold text-end">{booking.customer_name}</span>
+              <span className="text-slate-600">{tr('receiptNoLabel', lang)}</span>
+              <span className="font-bold tabular-nums">{payment.receipt_number}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-600">Phone:</span>
-              <span className="tabular-nums">{booking.customer_phone}</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-600">{tr('dateCol', lang)}:</span>
+              <span className="tabular-nums">{formatDateDisplay(payment.payment_date, lang)}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-600">Event / Floors:</span>
-              <span className="text-end">{booking.event_type} ({booking.floors.join('/')})</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-600">{tr('bookingCodeLabel', lang)}</span>
+              <span className="font-bold tabular-nums">{booking.booking_code}</span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-600">{tr('eventDateLabel', lang)}</span>
+              <span className="tabular-nums">{formatDateDisplay(booking.event_date, lang)}</span>
             </div>
           </div>
 
-          <div className="border-b border-dashed border-slate-400 pb-2.5 space-y-1.5 tabular-nums">
-            <div className="flex justify-between items-baseline">
-              <span className="font-bold">PAID NOW:</span>
-              <span className="text-base font-bold">{formatPKR(payment.amount)}</span>
+          <div className="border-b border-dashed border-slate-400 pb-2 space-y-1">
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-600">{tr('customerName', lang)}:</span>
+              <span className="font-bold text-end">{booking.customer_name}</span>
             </div>
-            <div className="flex justify-between text-[10px]">
-              <span className="text-slate-600">Mode:</span>
-              <span>{payment.mode}{payment.reference_no ? ` (${payment.reference_no})` : ''}</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-600">{tr('phone', lang)}:</span>
+              <span className="tabular-nums">{booking.customer_phone}</span>
             </div>
-            <div className="flex justify-between text-[10px]">
-              <span className="text-slate-600">Received By:</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-600">{tr('eventType', lang)}:</span>
+              <span className="text-end">{eventTypeLabel}</span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-600">{tr('floors', lang)}:</span>
+              <span className="text-end">{floorLabel}</span>
+            </div>
+          </div>
+
+          <div className="border-b border-dashed border-slate-400 pb-2.5 space-y-1.5">
+            <div className="flex justify-between items-baseline gap-2">
+              <span className="font-bold">{tr('paidNowLabel', lang)}</span>
+              <span className="text-base font-bold tabular-nums">{formatPKR(payment.amount)}</span>
+            </div>
+            <div className="flex justify-between text-[10px] gap-2">
+              <span className="text-slate-600">{tr('modeCol', lang)}:</span>
+              <span>
+                {translatePaymentMode(payment.mode, lang)}
+                {payment.reference_no ? (
+                  <span className="tabular-nums"> ({payment.reference_no})</span>
+                ) : null}
+              </span>
+            </div>
+            <div className="flex justify-between text-[10px] gap-2">
+              <span className="text-slate-600">{tr('receivedByLabel', lang)}</span>
               <span>{payment.received_by}</span>
             </div>
             {payment.notes && (
-              <div className="text-[10px] text-slate-700 pt-0.5">Note: {payment.notes}</div>
+              <div className="text-[10px] text-slate-700 pt-0.5">
+                {tr('notes', lang)}: {payment.notes}
+              </div>
             )}
           </div>
 
-          <div className="border-b border-dashed border-slate-400 pb-2 space-y-1 tabular-nums">
-            <div className="flex justify-between">
-              <span className="text-slate-600">Agreed Total:</span>
-              <span>{formatPKR(fin.grandTotal)}</span>
+          <div className="border-b border-dashed border-slate-400 pb-2 space-y-1">
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-600">{tr('totalBillLabel', lang)}</span>
+              <span className="tabular-nums">{formatPKR(fin.grandTotal)}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-600">Total Paid:</span>
-              <span>{formatPKR(fin.totalPaid)}</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-600">{tr('totalPaidLabel', lang)}:</span>
+              <span className="tabular-nums">{formatPKR(fin.totalPaid)}</span>
             </div>
-            <div className="flex justify-between font-bold text-xs">
-              <span>Balance Due:</span>
-              <span>{formatPKR(fin.balance)}</span>
+            <div className="flex justify-between font-bold text-xs gap-2">
+              <span>{tr('balanceDueLabel', lang)}:</span>
+              <span className="tabular-nums">{formatPKR(fin.balance)}</span>
             </div>
           </div>
 
-          <div className="text-center text-[10px] text-slate-700 pt-1 space-y-0.5">
-            <div>Thank you for choosing {settings.hall_name}</div>
-            <div className="font-urdu" dir="rtl">آپ کی آمد کا شکریہ</div>
+          <div className="text-center text-[10px] text-slate-700 pt-1">
+            {lang === 'ur'
+              ? `${hallName} کو منتخب کرنے کا شکریہ`
+              : `Thank you for choosing ${hallName}`}
           </div>
         </div>
       </div>

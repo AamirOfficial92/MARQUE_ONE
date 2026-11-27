@@ -10,6 +10,12 @@ import {
   Payment,
 } from '../types';
 
+export function normalizeWesternDigits(input: string): string {
+  return input
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660));
+}
+
 export function formatPKR(amount: number): string {
   const safe = Number.isFinite(amount) ? Math.round(amount) : 0;
   return `PKR ${safe.toLocaleString('en-PK')}`;
@@ -19,11 +25,12 @@ export function formatDateDisplay(dateStr: string, lang: Language = 'en'): strin
   if (!dateStr) return '—';
   const d = new Date(dateStr.includes('T') ? dateStr : `${dateStr}T00:00:00`);
   if (Number.isNaN(d.getTime())) return dateStr;
-  return d.toLocaleDateString(lang === 'ur' ? 'ur-PK' : 'en-PK', {
+  const formatted = d.toLocaleDateString(lang === 'ur' ? 'ur-PK-u-nu-latn' : 'en-PK', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
   });
+  return normalizeWesternDigits(formatted);
 }
 
 export function todayISO(): string {
@@ -209,6 +216,8 @@ export interface SuggestedRentInfo {
   amount: number;
   dayType: 'weekday' | 'weekend';
   seasonName: string;
+  seasonNameUr: string;
+  isStandard: boolean;
 }
 
 export function getSuggestedHallRent(
@@ -225,6 +234,7 @@ export function getSuggestedHallRent(
   );
   const rateTable = matchedSeason?.rates || settings.weekday_weekend_rates;
   const seasonName = matchedSeason ? matchedSeason.name : 'Standard';
+  const seasonNameUr = matchedSeason ? (matchedSeason.name_ur || matchedSeason.name) : 'معیاری نرخ';
 
   let amount = 0;
   if (floors.includes('Full Hall') || floors.length >= 3) {
@@ -235,7 +245,7 @@ export function getSuggestedHallRent(
     if (floors.includes('Third')) amount += rateTable?.Third?.[dayType] ?? settings.default_rent_third;
   }
 
-  return { amount, dayType, seasonName };
+  return { amount, dayType, seasonName, seasonNameUr, isStandard: !matchedSeason };
 }
 
 /**
@@ -343,13 +353,17 @@ export function timeToMinutes(t: string): number {
   return hh * 60 + mm;
 }
 
-export function formatTime12h(t: string): string {
+export function formatTime12h(t: string, lang: Language = 'en'): string {
   if (!t) return '';
   const [hhStr, mmStr] = t.split(':');
   const hh = parseInt(hhStr, 10) || 0;
   const mm = String(parseInt(mmStr, 10) || 0).padStart(2, '0');
-  const period = hh >= 12 ? 'PM' : 'AM';
   const h12 = hh % 12 === 0 ? 12 : hh % 12;
+  if (lang === 'ur') {
+    const periodUr = hh < 12 ? 'صبح' : hh < 16 ? 'دوپہر' : hh < 19 ? 'شام' : 'رات';
+    return `${h12}:${mm} ${periodUr}`;
+  }
+  const period = hh >= 12 ? 'PM' : 'AM';
   return `${h12}:${mm} ${period}`;
 }
 

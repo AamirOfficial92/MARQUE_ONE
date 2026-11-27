@@ -29,7 +29,7 @@ export const AuthScreen: React.FC = () => {
       <div className="min-h-screen flex items-center justify-center p-4 bg-slate-100 dark:bg-[#060913] text-slate-900 dark:text-slate-100">
         <div className="max-w-md w-full rounded-2xl border border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-6 text-center shadow-lg">
           <p className="text-sm font-medium">
-            App is not configured. Please contact the administrator.
+            {tr('appNotConfiguredDesc', lang)}
           </p>
         </div>
       </div>
@@ -58,12 +58,12 @@ export const AuthScreen: React.FC = () => {
     setError(null);
     clearAuthError();
     if (!email.trim() || !password) {
-      setError('Email and password are required.');
+      setError(lang === 'ur' ? 'ای میل اور پاس ورڈ لازمی ہیں۔' : 'Email and password are required.');
       return;
     }
     const res = await signInWithEmail(email, password);
     if (!res.ok) {
-      setError(res.error || 'Sign in failed');
+      setError(res.error || (lang === 'ur' ? 'سائن ان ناکام رہا۔' : 'Sign in failed'));
     }
   };
 
@@ -77,7 +77,7 @@ export const AuthScreen: React.FC = () => {
           <div className="flex items-center gap-3">
             <img
               src={HALL_LOGO_SRC}
-              alt="Marquee 1 Logo"
+              alt={tr('appTitle', lang)}
               referrerPolicy="no-referrer"
               className="w-12 h-12 rounded-xl object-cover border border-amber-500/30"
             />
@@ -109,14 +109,14 @@ export const AuthScreen: React.FC = () => {
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-900/80 text-xs font-medium text-slate-200 hover:border-cyan-500/50 transition-colors whitespace-nowrap shrink-0"
             >
               <Globe className="w-3.5 h-3.5 text-cyan-400" />
-              <span>{lang === 'en' ? 'اردو' : 'English'}</span>
+              <span>{tr('switchToOtherLang', lang)}</span>
             </button>
           </div>
         </div>
 
         <h2 className="text-lg font-semibold text-slate-100 mb-1">{tr('loginTitle', lang)}</h2>
         <p className="text-xs text-slate-400 mb-4">
-          Sign in with your Supabase Auth staff email and password.
+          {tr('signInSubtitle', lang)}
         </p>
 
         {visibleError && (
@@ -126,14 +126,20 @@ export const AuthScreen: React.FC = () => {
           >
             <div>
               <div className="font-semibold text-rose-300 mb-0.5">
-                {missingProfileInfo ? 'Profile setup required in Supabase' : 'Sign-in error'}
+                {missingProfileInfo
+                  ? lang === 'ur'
+                    ? 'ڈیٹابیس میں پروفائل سیٹ اپ درکار ہے'
+                    : 'Profile setup required in database'
+                  : lang === 'ur'
+                  ? 'سائن ان خرابی'
+                  : 'Sign-in error'}
               </div>
               <div>{visibleError}</div>
             </div>
 
             {missingProfileInfo && (
               <div className="space-y-2 pt-1 border-t border-rose-500/25">
-                <pre className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 text-[11px] text-cyan-300 overflow-x-auto select-all whitespace-pre-wrap break-all tabular-nums">
+                <pre dir="ltr" className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 text-[11px] text-cyan-300 overflow-x-auto select-all whitespace-pre-wrap break-all tabular-nums">
                   {missingProfileSql}
                 </pre>
                 <div className="flex flex-wrap items-center gap-2">
@@ -143,7 +149,11 @@ export const AuthScreen: React.FC = () => {
                     className="px-2.5 py-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/15 text-cyan-200 text-[11px] font-semibold flex items-center gap-1.5"
                   >
                     {copiedSql ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copiedSql ? 'SQL Copied!' : 'Copy SQL Fix'}</span>
+                    <span>
+                      {copiedSql
+                        ? lang === 'ur' ? 'کاپی ہو گیا!' : 'Copied!'
+                        : lang === 'ur' ? 'ایس کیو ایل کاپی کریں' : 'Copy SQL Fix'}
+                    </span>
                   </button>
                   <button
                     type="button"
@@ -152,7 +162,7 @@ export const AuthScreen: React.FC = () => {
                     className="px-2.5 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/15 text-emerald-200 text-[11px] font-semibold flex items-center gap-1.5 disabled:opacity-50"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-                    <span>Retry Login Check</span>
+                    <span>{lang === 'ur' ? 'دوبارہ چیک کریں' : 'Retry Login Check'}</span>
                   </button>
                   <button
                     type="button"
@@ -160,7 +170,7 @@ export const AuthScreen: React.FC = () => {
                     className="px-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-900/80 text-slate-300 text-[11px] font-medium flex items-center gap-1"
                   >
                     <LogOut className="w-3 h-3" />
-                    <span>Sign Out</span>
+                    <span>{tr('logout', lang)}</span>
                   </button>
                 </div>
               </div>
@@ -170,12 +180,15 @@ export const AuthScreen: React.FC = () => {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1.5">Email</label>
+            <label className="block text-xs font-medium text-slate-300 mb-1.5">
+              {tr('emailAddress', lang)}
+            </label>
             <div className="relative">
               <Mail className="w-4 h-4 text-slate-400 absolute top-3 left-3 rtl:left-auto rtl:right-3" />
               <input
                 type="email"
                 required
+                dir="ltr"
                 autoComplete="email"
                 value={email}
                 onChange={(e) => {
@@ -192,7 +205,9 @@ export const AuthScreen: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1.5">Password</label>
+            <label className="block text-xs font-medium text-slate-300 mb-1.5">
+              {tr('passwordLabel', lang)}
+            </label>
             <div className="relative">
               <Lock className="w-4 h-4 text-slate-400 absolute top-3 left-3 rtl:left-auto rtl:right-3" />
               <input
@@ -219,7 +234,7 @@ export const AuthScreen: React.FC = () => {
             className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-semibold text-sm hover:opacity-95 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
           >
             <KeyRound className="w-4 h-4" />
-            <span>{loading ? 'Signing in...' : tr('loginTitle', lang)}</span>
+            <span>{loading ? tr('signingIn', lang) : tr('signInBtn', lang)}</span>
           </button>
         </form>
       </div>

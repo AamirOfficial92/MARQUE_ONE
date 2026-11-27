@@ -20,6 +20,8 @@ import {
   EventTypeItem,
   Expense,
   ExpenseCategory,
+  FloorConfig,
+  FloorName,
   Hall,
   HallSettings,
   InstallmentSchedule,
@@ -37,6 +39,7 @@ import {
   UserRole,
 } from '../types';
 import {
+  createDefaultFloorsForHall,
   createDefaultHallSettings,
   createEmptyDatabase,
   createNewHallCatalogTemplates,
@@ -48,8 +51,11 @@ import {
   calculateCrateBill,
   calculateDiscountAmount,
   findBookingConflict,
+  formatDateDisplay,
+  formatTime12h,
   todayISO,
 } from '../utils/formatters';
+import { translateFloor } from '../i18n/translations';
 import {
   PERMISSION_SCREEN_KEYS,
   PermissionMatrixMap,
@@ -59,6 +65,7 @@ import {
 } from '../utils/permissions';
 
 const THEME_STORAGE_KEY = 'marquee1_hms_theme_v1';
+const LANG_STORAGE_KEY = 'marquee1_hms_lang_v1';
 const ACTIVE_HALL_STORAGE_KEY = 'marquee1_hms_active_hall_v1';
 
 function getSystemTheme(): ThemeMode {
@@ -72,6 +79,15 @@ function getSavedBrowserTheme(): ThemeMode | null {
   try {
     const val = localStorage.getItem(THEME_STORAGE_KEY);
     return val === 'light' || val === 'dark' ? val : null;
+  } catch {
+    return null;
+  }
+}
+
+function getSavedBrowserLang(): Language | null {
+  try {
+    const val = localStorage.getItem(LANG_STORAGE_KEY);
+    return val === 'en' || val === 'ur' ? val : null;
   } catch {
     return null;
   }
@@ -264,6 +280,7 @@ interface AppContextValue {
   saveChargeItem: (item: Omit<ChargeCatalogItem, 'id' | 'hall_id' | 'deleted_at'> & { id?: string }) => Promise<void>;
   softDeleteChargeItem: (id: string) => Promise<void>;
   saveEventType: (et: Omit<EventTypeItem, 'id' | 'hall_id' | 'deleted_at' | 'is_default'> & { id?: string }) => Promise<void>;
+  saveFloorLabel: (floor: { id?: string; floor_key: FloorName; name_en: string; name_ur: string; sort_order?: number }) => Promise<void>;
   manageUserWithEdgeFunction: (payload: ManageUserActionPayload) => Promise<{ ok: boolean; error?: string; profile?: UserProfile }>;
   updateSettings: (next: HallSettings) => Promise<void>;
   importBookingsBatch: (rows: Array<Partial<Booking>>) => Promise<{ imported: number; skipped: number; errors: string[] }>;
@@ -346,11 +363,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const hallSeq = rawDb.perHallSequences[activeHallId] || { booking: 0, invoice: 0, receipt: 0 };
 
+    const hallFloors = byHall(rawDb.floors);
+    const resolvedFloors =
+      hallFloors.length > 0 ? hallFloors : createDefaultFloorsForHall(activeHallId);
+
     return {
       halls:
         currentUser?.role === 'super_admin'
           ? rawDb.halls
           : rawDb.halls.filter((h) => h.id === activeHallId),
+      floors: resolvedFloors,
       hallSettings: rawDb.hallSettings,
       settings: hallSettingsObj,
       profiles: scopedProfiles,
@@ -412,7 +434,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return hasMatrixPermission(currentUserPermissions, currentUser.role, screenKey, action);
   };
 
-  const [lang, setLangState] = useState<Language>(() => db.settings.default_language || 'en');
+  const [lang, setLangState] = useState<Language>(() => getSavedBrowserLang() || 'en');
+  const langRef = React.useRef<Language>(lang);
+  langRef.current = lang;
+  const ctxText = (en: string, ur: string) => (langRef.current === 'ur' ? ur : en);
   const [themePreferenceSource, setThemePreferenceSource] = useState<'system' | 'saved'>(() => {
     if (currentUser?.preferred_theme === 'light' || currentUser?.preferred_theme === 'dark') {
       return 'saved';
@@ -460,7 +485,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     uid: string,
     authEmail?: string
   ): Promise<{ ok: boolean; error?: string }> => {
-    if (!supabase) return { ok: false, error: 'Supabase client is not initialized.' };
+    if (!supabase) return { ok: false, error: ctxText('Supabase client is not initialized.', 'سوپابیس کلائنٹ فعال نہیں ہے۔') };
     if (inFlightAuthRef.current && inFlightAuthRef.current.uid === uid) {
       return inFlightAuthRef.current.promise;
     }
@@ -475,7 +500,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           .maybeSingle();
 
         if (profileRes.error) {
-          const msg = `Unable to load your staff profile (${profileRes.error.message}).`;
+          const msg = ctxText(
+            `Unable to load your staff profile (${profileRes.error.message}).`,
+            `آپ کا عملہ پروفائل لوڈ نہیں ہو سکا (${profileRes.error.message})۔`
+          );
           console.warn('[Auth] Profile lookup error:', {
             code: profileRes.error.code,
             message: profileRes.error.message,
@@ -489,7 +517,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const profileRow = profileRes.data ? hydrateProfile(profileRes.data as UserProfile) : null;
 
         if (!profileRow) {
-          const msg = `Signed in (${authEmail || uid}), but no profile/role row was found in public.profiles. Run the SQL snippet below in Supabase SQL Editor or ask your Super Admin to add your profile and role.`;
+          const msg = ctxText(
+            `Signed in (${authEmail || uid}), but no profile/role row was found in public.profiles. Run the SQL snippet below in Supabase SQL Editor or ask your Super Admin to add your profile and role.`,
+            `سائن ان (${authEmail || uid}) ہو گیا، لیکن پروفائل ریکارڈ موجود نہیں ہے۔ سپر ایڈمن سے رابطہ کریں یا ذیل کا ایس کیو ایل چلائیں۔`
+          );
           console.warn('[Auth] Missing profile/role row in public.profiles for authenticated user:', { uid });
           setMissingProfileInfo({ uid, email: authEmail || '' });
           setCurrentUser(null);
@@ -498,7 +529,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         if (!profileRow.is_active) {
-          const msg = 'Your staff profile is deactivated (is_active = false). Please contact Super Admin or your Hall Admin.';
+          const msg = ctxText(
+            'Your staff profile is deactivated (is_active = false). Please contact Super Admin or your Hall Admin.',
+            'آپ کا عملہ اکاؤنٹ غیر فعال ہے۔ براہِ کرم سپر ایڈمن یا ہال ایڈمن سے رابطہ کریں۔'
+          );
           console.warn('[Auth] Deactivated user profile:', { uid });
           setMissingProfileInfo(null);
           setCurrentUser(null);
@@ -522,8 +556,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         }
 
+        if (profileRow.preferred_language === 'en' || profileRow.preferred_language === 'ur') {
+          setLangState(profileRow.preferred_language);
+          try {
+            localStorage.setItem(LANG_STORAGE_KEY, profileRow.preferred_language);
+          } catch {
+            // ignore
+          }
+        }
+
         const [
           hallsRes,
+          floorsRes,
           profilesAllRes,
           userPermsRes,
           settingsRes,
@@ -546,6 +590,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           auditRes,
         ] = await Promise.all([
           supabase.from('halls').select('*').order('created_at', { ascending: true }),
+          supabase.from('floors').select('*').order('sort_order', { ascending: true }),
           supabase.from('profiles').select('*').order('created_at', { ascending: false }),
           supabase.from('user_permissions').select('*'),
           supabase.from('hall_settings').select('*'),
@@ -568,12 +613,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(250),
         ]);
 
+        const nextHallSettings = settingsRes.data ? (settingsRes.data as HallSettings[]) : [];
+        if (
+          profileRow.preferred_language !== 'en' &&
+          profileRow.preferred_language !== 'ur' &&
+          !getSavedBrowserLang()
+        ) {
+          const fallbackDefaultLang = nextHallSettings[0]?.default_language;
+          if (fallbackDefaultLang === 'en' || fallbackDefaultLang === 'ur') {
+            setLangState(fallbackDefaultLang);
+          }
+        }
+
         setRawDb((prev) => {
           const nextHalls = hallsRes.data ? (hallsRes.data as Hall[]) : [];
-          const nextHallSettings = settingsRes.data ? (settingsRes.data as HallSettings[]) : [];
+          const nextFloors = !floorsRes.error && Array.isArray(floorsRes.data) ? (floorsRes.data as FloorConfig[]) : [];
           return {
             ...prev,
             halls: nextHalls,
+            floors: nextFloors,
             hallSettings: nextHallSettings,
             settings: nextHallSettings[0] || createDefaultHallSettings(profileRow.hall_id || DEFAULT_HALL_ID),
             profiles: profilesAllRes.data
@@ -650,8 +708,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
-  const setLang = (next: Language) => setLangState(next);
-  const toggleLang = () => setLangState((prev) => (prev === 'en' ? 'ur' : 'en'));
+  const persistUserLanguage = (nextLang: Language) => {
+    if (!currentUser) return;
+    const updatedUser: UserProfile = { ...currentUser, preferred_language: nextLang };
+    setCurrentUser(updatedUser);
+    setRawDb((prev) => ({
+      ...prev,
+      profiles: prev.profiles.map((p) => (p.id === updatedUser.id ? { ...p, preferred_language: nextLang } : p)),
+    }));
+    if (isSupabaseConfigured && supabase) {
+      supabase.from('profiles').update({ preferred_language: nextLang }).eq('id', updatedUser.id).then(() => {});
+    }
+  };
+
+  const setLang = (next: Language) => {
+    setLangState(next);
+    try {
+      localStorage.setItem(LANG_STORAGE_KEY, next);
+    } catch {
+      // ignore
+    }
+    persistUserLanguage(next);
+  };
+  const toggleLang = () => setLang(lang === 'en' ? 'ur' : 'en');
   const clearError = () => setErrorMsg(null);
   const clearAuthError = () => {
     setAuthError(null);
@@ -739,12 +818,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAuthError(null);
     setMissingProfileInfo(null);
     if (!isSupabaseConfigured || !supabase) {
-      const msg = 'App is not configured. Please contact the administrator.';
+      const msg = ctxText(
+        'App is not configured. Please contact the administrator.',
+        'ایپ سیٹ اپ مکمل نہیں ہے۔ براہِ کرم منتظم سے رابطہ کریں۔'
+      );
       setAuthError(msg);
       return { ok: false, error: msg };
     }
     if (!email.trim() || !password) {
-      const msg = 'Email and password are required.';
+      const msg = ctxText('Email and password are required.', 'ای میل اور پاس ورڈ لازمی ہیں۔');
       setAuthError(msg);
       return { ok: false, error: msg };
     }
@@ -769,14 +851,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return { ok: false, error: syncRes.error };
         }
       } else {
-        const msg = 'Sign-in did not return an authenticated user session.';
+        const msg = ctxText(
+          'Sign-in did not return an authenticated user session.',
+          'سائن ان سیشن موصول نہیں ہوا۔'
+        );
         console.warn('[Auth] Missing user object after signInWithPassword');
         setAuthError(msg);
         return { ok: false, error: msg };
       }
       return { ok: true };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Unexpected sign-in error.';
+      const msg = err instanceof Error ? err.message : ctxText('Unexpected sign-in error.', 'لاگ ان میں غیر متوقع خرابی پیش آئی۔');
       console.warn('[Auth] Supabase sign-in exception:', msg);
       setAuthError(msg);
       return { ok: false, error: msg };
@@ -800,7 +885,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // =========================================================================
   const saveHall: AppContextValue['saveHall'] = async (hallData) => {
     if (currentUser?.role !== 'super_admin') {
-      return { ok: false, error: 'Only Super Admin can create or edit halls.' };
+      return { ok: false, error: ctxText('Only Super Admin can create or edit halls.', 'صرف سپر ایڈمن ہالز بنا یا ترمیم کر سکتا ہے۔') };
     }
     const isUpdate = Boolean(hallData.id);
     const hallId = hallData.id || makeUUID();
@@ -848,11 +933,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         chargeCategories: seededChargeCats,
         chargesCatalog: seededCharges,
         expenseCategories: seededExpCats,
+        floors: seededFloors,
       } = createNewHallCatalogTemplates(hallId, makeUUID);
 
       if (isSupabaseConfigured && supabase) {
         await supabase.from('hall_sequences').upsert({ hall_id: hallId, booking_seq: 0, invoice_seq: 0, receipt_seq: 0 });
         await supabase.from('hall_settings').upsert({ ...newSettings, id: makeUUID() }, { onConflict: 'hall_id' });
+        await supabase.from('floors').upsert(seededFloors, { onConflict: 'hall_id,floor_key' });
         await supabase.from('event_types').insert(seededEventTypes);
         await supabase.from('charge_categories').insert(seededChargeCats);
         await supabase.from('charges_catalog').insert(seededCharges);
@@ -862,6 +949,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setRawDb((prev) => ({
         ...prev,
         halls: [...prev.halls, record],
+        floors: [...prev.floors, ...seededFloors],
         hallSettings: [...prev.hallSettings, newSettings],
         eventTypes: [...prev.eventTypes, ...seededEventTypes],
         chargeCategories: [...prev.chargeCategories, ...seededChargeCats],
@@ -893,7 +981,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // =========================================================================
   const saveCustomer: AppContextValue['saveCustomer'] = async (cust) => {
     if (!can('customers', 'edit')) {
-      return { ok: false, error: 'You do not have Edit permission for Customers.' };
+      return { ok: false, error: ctxText('You do not have Edit permission for Customers.', 'آپ کو گاہکوں میں ترمیم کی اجازت نہیں ہے۔') };
     }
     const isUpdate = Boolean(cust.id);
     const id = cust.id || makeUUID();
@@ -1065,9 +1153,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     if (conflict) {
+      const floorText = conflict.floors
+        .map((f) => translateFloor(f, langRef.current, db.floors))
+        .join('، ');
+      const dateStr = formatDateDisplay(conflict.event_date, langRef.current);
+      const timeRange = `${formatTime12h(conflict.start_time, langRef.current)} – ${formatTime12h(conflict.end_time, langRef.current)}`;
       return {
         ok: false,
-        error: `${conflict.booking_code} (${conflict.floors.join(', ')} · ${conflict.event_date} ${conflict.start_time}–${conflict.end_time}, incl. ${hallSettingsObj.cleaning_buffer_minutes}m cleaning buffer)`,
+        error:
+          langRef.current === 'ur'
+            ? `${conflict.booking_code} (${floorText} · ${dateStr} ${timeRange}، بشمول ${hallSettingsObj.cleaning_buffer_minutes} منٹ صفائی وقفہ)`
+            : `${conflict.booking_code} (${floorText} · ${dateStr} ${timeRange}, incl. ${hallSettingsObj.cleaning_buffer_minutes}m cleaning buffer)`,
       };
     }
 
@@ -1109,7 +1205,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     if (!can('bookings', 'edit')) {
-      return { ok: false, error: 'You do not have Edit permission for Bookings.' };
+      return { ok: false, error: ctxText('You do not have Edit permission for Bookings.', 'آپ کو بکنگز میں ترمیم کی اجازت نہیں ہے۔') };
     }
     let syncedCustomerId: string | null = bookingData.customer_id ?? existing?.customer_id ?? null;
     if (can('customers', 'edit')) {
@@ -1376,7 +1472,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // =========================================================================
   const addPayment: AppContextValue['addPayment'] = async (paymentData) => {
     if (!can('payments', 'edit') && !can('bookings', 'edit')) {
-      return { ok: false, error: 'You do not have Edit permission for Payments.' };
+      return { ok: false, error: ctxText('You do not have Edit permission for Payments.', 'آپ کو ادائیگیوں میں ترمیم کی اجازت نہیں ہے۔') };
     }
     const currentSeq = rawDb.perHallSequences[activeHallId] || { booking: 0, invoice: 0, receipt: 0 };
     const nextSeq = currentSeq.receipt + 1;
@@ -1452,7 +1548,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // =========================================================================
   const saveDailyClosing: AppContextValue['saveDailyClosing'] = async (params) => {
     if (!can('daily_closing', 'edit')) {
-      return { ok: false, error: 'You do not have Edit permission for Daily Closing.' };
+      return { ok: false, error: ctxText('You do not have Edit permission for Daily Closing.', 'آپ کو روزانہ کیش کلوزنگ میں ترمیم کی اجازت نہیں ہے۔') };
     }
     const record: DailyClosing = {
       id: makeUUID(),
@@ -1501,10 +1597,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     adminNotes
   ) => {
     if (currentUser?.role === 'manager' || !can('daily_closing', 'edit')) {
-      return { ok: false, error: 'Only Hall Admin or Super Admin with Daily Closing Edit permission can verify closings.' };
+      return { ok: false, error: ctxText('Only Hall Admin or Super Admin with Daily Closing Edit permission can verify closings.', 'صرف ہال ایڈمن یا سپر ایڈمن کیش کلوزنگ کی تصدیق کر سکتے ہیں۔') };
     }
     const target = rawDb.dailyClosings.find((c) => c.id === closingId);
-    if (!target) return { ok: false, error: 'Closing record not found.' };
+    if (!target) return { ok: false, error: ctxText('Closing record not found.', 'کلوزنگ ریکارڈ نہیں ملا۔') };
 
     const reviewedAt = new Date().toISOString();
     const patch = {
@@ -1538,7 +1634,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // =========================================================================
   const submitApprovalRequest: AppContextValue['submitApprovalRequest'] = async (params) => {
     if (!can('bookings', 'edit')) {
-      return { ok: false, error: 'You do not have Edit permission for Bookings.' };
+      return { ok: false, error: ctxText('You do not have Edit permission for Bookings.', 'آپ کو بکنگز میں ترمیم کی اجازت نہیں ہے۔') };
     }
     const record: ApprovalRequest = {
       id: makeUUID(),
@@ -1584,11 +1680,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     reviewNote
   ) => {
     if (currentUser?.role === 'manager' || !can('bookings', 'edit')) {
-      return { ok: false, error: 'Only Hall Admin or Super Admin with Bookings Edit permission can approve or reject requests.' };
+      return { ok: false, error: ctxText('Only Hall Admin or Super Admin with Bookings Edit permission can approve or reject requests.', 'صرف ہال ایڈمن یا سپر ایڈمن درخواستیں منظور یا مسترد کر سکتے ہیں۔') };
     }
     const req = rawDb.approvalRequests.find((r) => r.id === requestId);
-    if (!req) return { ok: false, error: 'Request not found.' };
-    if (req.status !== 'pending') return { ok: false, error: 'Request has already been reviewed.' };
+    if (!req) return { ok: false, error: ctxText('Request not found.', 'درخواست نہیں ملی۔') };
+    if (req.status !== 'pending') return { ok: false, error: ctxText('Request has already been reviewed.', 'اس درخواست کا فیصلہ پہلے ہی ہو چکا ہے۔') };
 
     const reviewedAt = new Date().toISOString();
     const patch = {
@@ -2060,6 +2156,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
+  const saveFloorLabel: AppContextValue['saveFloorLabel'] = async (floor) => {
+    if (!can('settings', 'edit')) return;
+    const existing = rawDb.floors.find(
+      (f) => f.hall_id === activeHallId && (f.id === floor.id || f.floor_key === floor.floor_key)
+    );
+    const id = existing?.id || (isUuid(floor.id) ? floor.id : makeUUID());
+    const record: FloorConfig = {
+      id,
+      hall_id: activeHallId,
+      floor_key: floor.floor_key,
+      name_en: floor.name_en.trim(),
+      name_ur: floor.name_ur.trim(),
+      sort_order: floor.sort_order ?? existing?.sort_order ?? 1,
+    };
+    if (isSupabaseConfigured && supabase) {
+      await supabase.from('floors').upsert(record, { onConflict: 'hall_id,floor_key' });
+    }
+    setRawDb((prev) => {
+      const existsInRaw = prev.floors.some(
+        (f) => f.hall_id === activeHallId && f.floor_key === floor.floor_key
+      );
+      return {
+        ...prev,
+        floors: existsInRaw
+          ? prev.floors.map((f) =>
+              f.hall_id === activeHallId && f.floor_key === floor.floor_key ? record : f
+            )
+          : [...prev.floors, record],
+      };
+    });
+  };
+
   const validateAdminDelegation = (entries: ScreenPermissionEntry[]): string | null => {
     if (currentUser?.role !== 'admin') return null;
     for (const entry of entries) {
@@ -2080,17 +2208,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const manageUserWithEdgeFunction: AppContextValue['manageUserWithEdgeFunction'] = async (payload) => {
     const callerRole = currentUser?.role;
     if ((callerRole !== 'super_admin' && callerRole !== 'admin') || !can('users', 'edit')) {
-      return { ok: false, error: 'You do not have permission to create or edit staff accounts.' };
+      return { ok: false, error: ctxText('You do not have permission to create or edit staff accounts.', 'آپ کو عملہ اکاؤنٹس بنانے یا ترمیم کرنے کی اجازت نہیں ہے۔') };
     }
     if (!isSupabaseConfigured || !supabase || !supabaseUrl || !supabaseAnonKey) {
-      return { ok: false, error: 'App is not configured. Please contact the administrator.' };
+      return { ok: false, error: ctxText('App is not configured. Please contact the administrator.', 'ایپ سیٹ اپ مکمل نہیں ہے۔ براہِ کرم منتظم سے رابطہ کریں۔') };
     }
     if (callerRole === 'admin') {
       if (payload.action === 'create_user' && payload.role && payload.role !== 'manager') {
-        return { ok: false, error: 'Hall Admin can only create Manager accounts.' };
+        return { ok: false, error: ctxText('Hall Admin can only create Manager accounts.', 'ہال ایڈمن صرف مینیجر اکاؤنٹ بنا سکتا ہے۔') };
       }
       if (payload.hall_id && payload.hall_id !== currentUser?.hall_id) {
-        return { ok: false, error: 'Hall Admin can only manage users in their own hall.' };
+        return { ok: false, error: ctxText('Hall Admin can only manage users in their own hall.', 'ہال ایڈمن صرف اپنے ہال کے صارفین سنبھال سکتا ہے۔') };
       }
       if (payload.permissions && payload.permissions.length > 0) {
         const delegationErr = validateAdminDelegation(payload.permissions);
@@ -2104,7 +2232,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const { data: sessData } = await supabase.auth.getSession();
       const accessToken = sessData.session?.access_token;
       if (!accessToken) {
-        return { ok: false, error: 'Your login session has expired. Please sign in again.' };
+        return { ok: false, error: ctxText('Your login session has expired. Please sign in again.', 'آپ کا لاگ ان سیشن ختم ہو گیا ہے۔ براہِ کرم دوبارہ سائن ان کریں۔') };
       }
 
       const resp = await fetch(`${supabaseUrl.replace(/\/$/, '')}/functions/v1/manage-users`, {
@@ -2202,7 +2330,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const importBookingsBatch: AppContextValue['importBookingsBatch'] = async (rows) => {
     if (!can('backup_import', 'edit')) {
-      return { imported: 0, skipped: rows.length, errors: ['You do not have Edit permission for Backup & Import.'] };
+      return {
+        imported: 0,
+        skipped: rows.length,
+        errors: [ctxText('You do not have Edit permission for Backup & Import.', 'آپ کو بیک اپ اور امپورٹ میں ترمیم کی اجازت نہیں ہے۔')],
+      };
     }
     let imported = 0;
     let skipped = 0;
@@ -2220,7 +2352,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const r = rows[idx];
       if (!r.customer_name || !r.event_date) {
         skipped++;
-        errors.push(`Row ${idx + 1}: Missing customer name or event date`);
+        errors.push(
+          ctxText(
+            `Row ${idx + 1}: Missing customer name or event date`,
+            `قطار ${idx + 1}: گاہک کا نام یا تقریب کی تاریخ غائب ہے`
+          )
+        );
         continue;
       }
       const floors = r.floors && r.floors.length > 0 ? r.floors : (['First'] as Booking['floors']);
@@ -2238,7 +2375,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
       if (conflict) {
         skipped++;
-        errors.push(`Row ${idx + 1} (${r.customer_name}): Conflict with ${conflict.booking_code} on ${r.event_date}`);
+        errors.push(
+          ctxText(
+            `Row ${idx + 1} (${r.customer_name}): Conflict with ${conflict.booking_code} on ${r.event_date}`,
+            `قطار ${idx + 1} (${r.customer_name}): ${r.event_date} کو ${conflict.booking_code} سے وقت ٹکرا رہا ہے`
+          )
+        );
         continue;
       }
 
@@ -2388,6 +2530,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         saveChargeItem,
         softDeleteChargeItem,
         saveEventType,
+        saveFloorLabel,
         manageUserWithEdgeFunction,
         updateSettings,
         importBookingsBatch,

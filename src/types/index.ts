@@ -35,9 +35,19 @@ export interface FloorRatePair {
 export interface RentSeasonRule {
   id: string;
   name: string;
+  name_ur?: string;
   start_date: string; // YYYY-MM-DD
   end_date: string;   // YYYY-MM-DD
   rates: Record<FloorName, FloorRatePair>;
+}
+
+export interface FloorConfig {
+  id: string;
+  hall_id: string;
+  floor_key: FloorName;
+  name_en: string;
+  name_ur: string;
+  sort_order: number;
 }
 
 export interface Hall {
@@ -80,6 +90,7 @@ export interface UserProfile {
   role: UserRole;
   is_active: boolean;
   preferred_theme?: ThemeMode | null;
+  preferred_language?: Language | null;
   created_at: string;
 }
 
@@ -151,6 +162,7 @@ export interface ChargeCatalogItem {
   name_ur: string;
   default_rate: number;
   unit_label: string;
+  unit_label_ur?: string;
   is_default_package: boolean;
   is_crate_service?: boolean;
   deleted_at: string | null;
@@ -164,6 +176,7 @@ export interface BookingItem {
   item_name: string;
   item_name_ur: string;
   category_name: string;
+  category_name_ur?: string;
   quantity: number;
   rate: number;
   amount: number;
@@ -328,6 +341,7 @@ export interface Expense {
   hall_id: string;
   category_id: string;
   category_name: string;
+  category_name_ur?: string;
   booking_id?: string | null;
   employee_id?: string | null;
   amount: number;
@@ -424,6 +438,7 @@ export interface HallSequenceCounters {
 
 export interface AppDatabase {
   halls: Hall[];
+  floors: FloorConfig[];
   hallSettings: HallSettings[];
   profiles: UserProfile[];
   userPermissions: UserPermission[];

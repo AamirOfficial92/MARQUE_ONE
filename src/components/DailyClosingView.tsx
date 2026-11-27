@@ -11,6 +11,7 @@ import {
   Send,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { pickLocalized, tr, translateClosingStatus, translatePaymentMode } from '../i18n/translations';
 import { DailyClosing, DailyClosingBookingBreakdown } from '../types';
 import { formatDateDisplay, formatPKR, todayISO } from '../utils/formatters';
 
@@ -25,6 +26,9 @@ export const DailyClosingView: React.FC = () => {
   const [discrepancyInput, setDiscrepancyInput] = useState<number>(0);
   const [adminReviewNotes, setAdminReviewNotes] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const isUr = lang === 'ur';
+  const hallLabel = pickLocalized(db.settings.hall_name, db.settings.hall_name_ur, lang);
 
   const canSubmitClosing = can('daily_closing', 'edit');
   const canReview =
@@ -48,8 +52,8 @@ export const DailyClosingView: React.FC = () => {
       const bk = db.bookings.find((b) => b.id === p.booking_id);
       const existing = byBooking.get(p.booking_id) || {
         booking_id: p.booking_id,
-        booking_code: bk?.booking_code || 'Unknown',
-        customer_name: bk?.customer_name || 'Walk-in / Deleted',
+        booking_code: bk?.booking_code || '—',
+        customer_name: bk?.customer_name || '—',
         cash_amount: 0,
         online_amount: 0,
         total_amount: 0,
@@ -99,12 +103,14 @@ export const DailyClosingView: React.FC = () => {
     });
     setSubmitting(false);
     if (!res.ok) {
-      setFeedback({ ok: false, text: res.error || 'Could not submit closing.' });
+      setFeedback({ ok: false, text: res.error || (isUr ? 'کلوزنگ جمع نہیں ہو سکی۔' : 'Could not submit closing.') });
       return;
     }
     setFeedback({
       ok: true,
-      text: `Daily closing for ${formatDateDisplay(closingDate, lang)} submitted for admin verification.`,
+      text: isUr
+        ? `${formatDateDisplay(closingDate, lang)} کی روزانہ کلوزنگ ایڈمن کی تصدیق کے لیے جمع کر دی گئی ہے۔`
+        : `Daily closing for ${formatDateDisplay(closingDate, lang)} submitted for admin verification.`,
     });
     setManagerNotes('');
   };
@@ -124,7 +130,7 @@ export const DailyClosingView: React.FC = () => {
       adminReviewNotes.trim()
     );
     if (!res.ok) {
-      setFeedback({ ok: false, text: res.error || 'Could not save review.' });
+      setFeedback({ ok: false, text: res.error || (isUr ? 'جائزہ محفوظ نہیں ہو سکا۔' : 'Could not save review.') });
       return;
     }
     setReviewingId(null);
@@ -132,7 +138,11 @@ export const DailyClosingView: React.FC = () => {
       ok: true,
       text:
         decision === 'received'
-          ? `Closing for ${formatDateDisplay(c.closing_date, lang)} marked as Received.`
+          ? isUr
+            ? `${formatDateDisplay(c.closing_date, lang)} کی کلوزنگ وصول شدہ قرار دے دی گئی۔`
+            : `Closing for ${formatDateDisplay(c.closing_date, lang)} marked as Received.`
+          : isUr
+          ? `${formatDateDisplay(c.closing_date, lang)} کی کلوزنگ پر فرق کا نوٹ درج کر دیا گیا۔`
           : `Closing for ${formatDateDisplay(c.closing_date, lang)} flagged with discrepancy note.`,
     });
   };
@@ -156,10 +166,14 @@ export const DailyClosingView: React.FC = () => {
           <div>
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <ClipboardCheck className="w-4 h-4 text-cyan-400" />
-              <span>Daily Cash &amp; Online Collection Closing</span>
+              <span>
+                {isUr ? 'روزانہ کیش اور آن لائن وصولی کلوزنگ' : 'Daily Cash & Online Collection Closing'}
+              </span>
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              Itemized per-booking collection for {db.settings.hall_name}. Manager submits closing; Hall Admin verifies receipt.
+              {isUr
+                ? `${hallLabel} کے لیے ہر بکنگ کی تفصیلی وصولی۔ مینیجر کلوزنگ جمع کرواتا ہے اور ہال ایڈمن تصدیق کرتا ہے۔`
+                : `Itemized per-booking collection for ${hallLabel}. Manager submits closing; Hall Admin verifies receipt.`}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -188,7 +202,7 @@ export const DailyClosingView: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-4">
             <div className="flex items-center justify-between text-xs text-slate-400">
-              <span>Cash Collected</span>
+              <span>{isUr ? 'نقد وصولی' : 'Cash Collected'}</span>
               <Banknote className="w-4 h-4 text-emerald-400" />
             </div>
             <div className="text-xl font-bold text-emerald-300 tabular-nums mt-1">
@@ -197,7 +211,7 @@ export const DailyClosingView: React.FC = () => {
           </div>
           <div className="rounded-xl border border-cyan-500/25 bg-cyan-500/5 p-4">
             <div className="flex items-center justify-between text-xs text-slate-400">
-              <span>Online / Bank Transfer</span>
+              <span>{translatePaymentMode('Online', lang)}</span>
               <Landmark className="w-4 h-4 text-cyan-400" />
             </div>
             <div className="text-xl font-bold text-cyan-300 tabular-nums mt-1">
@@ -206,7 +220,11 @@ export const DailyClosingView: React.FC = () => {
           </div>
           <div className="rounded-xl border border-violet-500/25 bg-violet-500/5 p-4">
             <div className="flex items-center justify-between text-xs text-slate-400">
-              <span>Grand Total ({daySummary.paymentCount} receipts)</span>
+              <span>
+                {isUr
+                  ? `مجموعی کل (${daySummary.paymentCount} رسیدیں)`
+                  : `Grand Total (${daySummary.paymentCount} receipts)`}
+              </span>
               <ClipboardCheck className="w-4 h-4 text-violet-400" />
             </div>
             <div className="text-xl font-bold text-white tabular-nums mt-1">
@@ -220,12 +238,12 @@ export const DailyClosingView: React.FC = () => {
           <table className="w-full text-xs">
             <thead className="bg-slate-900/80 text-slate-400 border-b border-slate-800">
               <tr>
-                <th className="py-2.5 px-4 text-start">Booking</th>
-                <th className="py-2.5 px-4 text-start">Customer</th>
-                <th className="py-2.5 px-4 text-end">Receipts</th>
-                <th className="py-2.5 px-4 text-end">Cash</th>
-                <th className="py-2.5 px-4 text-end">Online</th>
-                <th className="py-2.5 px-4 text-end">Total</th>
+                <th className="py-2.5 px-4 text-start">{isUr ? 'بکنگ' : 'Booking'}</th>
+                <th className="py-2.5 px-4 text-start">{tr('customerName', lang)}</th>
+                <th className="py-2.5 px-4 text-end">{isUr ? 'رسیدیں' : 'Receipts'}</th>
+                <th className="py-2.5 px-4 text-end">{translatePaymentMode('Cash', lang)}</th>
+                <th className="py-2.5 px-4 text-end">{isUr ? 'آن لائن' : 'Online'}</th>
+                <th className="py-2.5 px-4 text-end">{isUr ? 'کل' : 'Total'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/70">
@@ -244,7 +262,9 @@ export const DailyClosingView: React.FC = () => {
               {daySummary.breakdown.length === 0 && (
                 <tr>
                   <td colSpan={6} className="py-6 text-center text-slate-500">
-                    No payments recorded on {formatDateDisplay(closingDate, lang)}.
+                    {isUr
+                      ? `${formatDateDisplay(closingDate, lang)} کو کوئی ادائیگی درج نہیں ہوئی۔`
+                      : `No payments recorded on ${formatDateDisplay(closingDate, lang)}.`}
                   </td>
                 </tr>
               )}
@@ -257,21 +277,28 @@ export const DailyClosingView: React.FC = () => {
           <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-xs text-emerald-300 flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 shrink-0" />
             <span>
-              Closing for {formatDateDisplay(closingDate, lang)} was verified &amp; received by{' '}
-              <strong>{existingForDate.reviewed_by_name || 'Admin'}</strong>.
+              {isUr
+                ? `${formatDateDisplay(closingDate, lang)} کی کلوزنگ ${existingForDate.reviewed_by_name || 'ایڈمن'} کی جانب سے تصدیق و وصول کر لی گئی ہے۔`
+                : `Closing for ${formatDateDisplay(closingDate, lang)} was verified & received by ${existingForDate.reviewed_by_name || 'Admin'}.`}
             </span>
           </div>
         ) : canSubmitClosing ? (
           <form onSubmit={handleSubmitClosing} className="flex flex-wrap items-end gap-3 pt-1">
             <div className="flex-1 min-w-[240px]">
               <label className="block text-xs text-slate-300 mb-1">
-                Manager Handover Notes (cash envelope / deposit slip details)
+                {isUr
+                  ? 'مینیجر ہینڈ اوور نوٹس (کیش لفافہ / ڈپازٹ سلپ کی تفصیل)'
+                  : 'Manager Handover Notes (cash envelope / deposit slip details)'}
               </label>
               <input
                 type="text"
                 value={managerNotes}
                 onChange={(e) => setManagerNotes(e.target.value)}
-                placeholder="e.g. Cash handed over in sealed bag; online verified in Meezan statement"
+                placeholder={
+                  isUr
+                    ? 'مثلاً نقد رقم لفافے میں حوالے کی، آن لائن اسٹیٹمنٹ سے تصدیق شدہ'
+                    : 'e.g. Cash handed over in sealed bag; online verified in bank statement'
+                }
                 className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
               />
             </div>
@@ -281,7 +308,15 @@ export const DailyClosingView: React.FC = () => {
               className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap disabled:opacity-50"
             >
               <Send className="w-3.5 h-3.5" />
-              <span>{existingForDate ? 'Resubmit Daily Closing' : 'Submit Daily Closing'}</span>
+              <span>
+                {existingForDate
+                  ? isUr
+                    ? 'روزانہ کلوزنگ دوبارہ جمع کروائیں'
+                    : 'Resubmit Daily Closing'
+                  : isUr
+                  ? 'روزانہ کلوزنگ جمع کروائیں'
+                  : 'Submit Daily Closing'}
+              </span>
             </button>
           </form>
         ) : null}
@@ -290,8 +325,12 @@ export const DailyClosingView: React.FC = () => {
       {/* Closing History */}
       <div className="glass-panel rounded-2xl overflow-hidden">
         <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
-          <h3 className="text-sm font-bold text-white">Closing History &amp; Reconciliation</h3>
-          <span className="text-xs text-slate-400 tabular-nums">{history.length} records</span>
+          <h3 className="text-sm font-bold text-white">
+            {isUr ? 'کلوزنگ تاریخچہ اور مطابقت' : 'Closing History & Reconciliation'}
+          </h3>
+          <span className="text-xs text-slate-400 tabular-nums">
+            {history.length} {isUr ? 'ریکارڈ' : 'records'}
+          </span>
         </div>
 
         <div className="divide-y divide-slate-800/70">
@@ -307,25 +346,27 @@ export const DailyClosingView: React.FC = () => {
                         {formatDateDisplay(c.closing_date, lang)}
                       </span>
                       <span
-                        className={`px-2 py-0.5 rounded-md border text-[11px] font-semibold uppercase ${statusBadge(
+                        className={`px-2 py-0.5 rounded-md border text-[11px] font-semibold ${statusBadge(
                           c.status
                         )}`}
                       >
-                        {c.status}
+                        {translateClosingStatus(c.status, lang)}
                       </span>
                       {c.discrepancy_amount > 0 && (
                         <span className="text-[11px] font-semibold text-rose-300 tabular-nums">
-                          Diff: {formatPKR(c.discrepancy_amount)}
+                          {isUr ? 'فرق:' : 'Diff:'} {formatPKR(c.discrepancy_amount)}
                         </span>
                       )}
                     </div>
                     <div className="text-[11px] text-slate-400">
-                      Submitted by {c.submitted_by_name}
+                      {isUr ? `جمع کنندہ: ${c.submitted_by_name}` : `Submitted by ${c.submitted_by_name}`}
                       {c.manager_notes ? ` · "${c.manager_notes}"` : ''}
                     </div>
                     {c.admin_notes && (
                       <div className="text-[11px] text-amber-300">
-                        Admin Note ({c.reviewed_by_name || 'Admin'}): {c.admin_notes}
+                        {isUr
+                          ? `ایڈمن نوٹ (${c.reviewed_by_name || 'ایڈمن'}): ${c.admin_notes}`
+                          : `Admin Note (${c.reviewed_by_name || 'Admin'}): ${c.admin_notes}`}
                       </div>
                     )}
                   </div>
@@ -334,7 +375,8 @@ export const DailyClosingView: React.FC = () => {
                     <div className="text-end text-xs tabular-nums">
                       <div className="font-bold text-white">{formatPKR(c.grand_total)}</div>
                       <div className="text-[11px] text-slate-400">
-                        Cash {formatPKR(c.cash_total)} · Online {formatPKR(c.online_total)}
+                        {isUr ? 'نقد' : 'Cash'} {formatPKR(c.cash_total)} ·{' '}
+                        {isUr ? 'آن لائن' : 'Online'} {formatPKR(c.online_total)}
                       </div>
                     </div>
 
@@ -344,7 +386,11 @@ export const DailyClosingView: React.FC = () => {
                         onClick={() => setExpandedId(isExpanded ? null : c.id)}
                         className="px-2.5 py-1.5 rounded-lg border border-slate-800 bg-slate-900/70 text-xs text-slate-300 flex items-center gap-1"
                       >
-                        <span>Bookings ({c.bookings_breakdown.length})</span>
+                        <span>
+                          {isUr
+                            ? `بکنگز (${c.bookings_breakdown.length})`
+                            : `Bookings (${c.bookings_breakdown.length})`}
+                        </span>
                         {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                       </button>
 
@@ -354,7 +400,13 @@ export const DailyClosingView: React.FC = () => {
                           onClick={() => (isReviewing ? setReviewingId(null) : openReview(c))}
                           className="px-3 py-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 text-xs font-semibold"
                         >
-                          {c.status === 'submitted' ? 'Verify / Flag' : 'Update Review'}
+                          {c.status === 'submitted'
+                            ? isUr
+                              ? 'تصدیق / نشاندہی'
+                              : 'Verify / Flag'
+                            : isUr
+                            ? 'جائزہ اپڈیٹ کریں'
+                            : 'Update Review'}
                         </button>
                       )}
                     </div>
@@ -366,11 +418,11 @@ export const DailyClosingView: React.FC = () => {
                     <table className="w-full text-[11px]">
                       <thead className="text-slate-400 border-b border-slate-800">
                         <tr>
-                          <th className="py-2 px-3 text-start">Code</th>
-                          <th className="py-2 px-3 text-start">Customer</th>
-                          <th className="py-2 px-3 text-end">Cash</th>
-                          <th className="py-2 px-3 text-end">Online</th>
-                          <th className="py-2 px-3 text-end">Total</th>
+                          <th className="py-2 px-3 text-start">{isUr ? 'کوڈ' : 'Code'}</th>
+                          <th className="py-2 px-3 text-start">{tr('customerName', lang)}</th>
+                          <th className="py-2 px-3 text-end">{isUr ? 'نقد' : 'Cash'}</th>
+                          <th className="py-2 px-3 text-end">{isUr ? 'آن لائن' : 'Online'}</th>
+                          <th className="py-2 px-3 text-end">{isUr ? 'کل' : 'Total'}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800/60">
@@ -392,7 +444,9 @@ export const DailyClosingView: React.FC = () => {
                   <div className="rounded-xl border border-slate-700 bg-slate-900/80 p-3.5 space-y-3 text-xs">
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
-                        <label className="block text-slate-300 mb-1">Discrepancy Amount (PKR, if flagging)</label>
+                        <label className="block text-slate-300 mb-1">
+                          {isUr ? 'فرق کی رقم (PKR، اگر فرق ہو)' : 'Discrepancy Amount (PKR, if flagging)'}
+                        </label>
                         <input
                           type="number"
                           min={0}
@@ -402,12 +456,18 @@ export const DailyClosingView: React.FC = () => {
                         />
                       </div>
                       <div className="sm:col-span-2">
-                        <label className="block text-slate-300 mb-1">Admin Reconciliation Note</label>
+                        <label className="block text-slate-300 mb-1">
+                          {isUr ? 'ایڈمن تصدیقی نوٹ' : 'Admin Reconciliation Note'}
+                        </label>
                         <input
                           type="text"
                           value={adminReviewNotes}
                           onChange={(e) => setAdminReviewNotes(e.target.value)}
-                          placeholder="Cash counted & verified, or describe shortage/excess..."
+                          placeholder={
+                            isUr
+                              ? 'نقد رقم گن کر وصول کی گئی، یا کمی/زیادتی کی تفصیل لکھیں...'
+                              : 'Cash counted & verified, or describe shortage/excess...'
+                          }
                           className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
                         />
                       </div>
@@ -419,7 +479,7 @@ export const DailyClosingView: React.FC = () => {
                         className="px-3.5 py-2 rounded-xl border border-rose-500/40 bg-rose-500/10 text-rose-300 font-semibold flex items-center gap-1.5"
                       >
                         <AlertTriangle className="w-3.5 h-3.5" />
-                        <span>Flag Difference</span>
+                        <span>{isUr ? 'فرق کی نشاندہی کریں' : 'Flag Difference'}</span>
                       </button>
                       <button
                         type="button"
@@ -427,7 +487,7 @@ export const DailyClosingView: React.FC = () => {
                         className="px-3.5 py-2 rounded-xl bg-emerald-600 text-white font-semibold flex items-center gap-1.5"
                       >
                         <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>Mark as Received</span>
+                        <span>{isUr ? 'وصول شدہ نشان زد کریں' : 'Mark as Received'}</span>
                       </button>
                     </div>
                   </div>
@@ -437,7 +497,7 @@ export const DailyClosingView: React.FC = () => {
           })}
           {history.length === 0 && (
             <div className="py-10 text-center text-xs text-slate-500">
-              No daily closings submitted yet.
+              {isUr ? 'ابھی تک کوئی روزانہ کلوزنگ جمع نہیں کروائی گئی۔' : 'No daily closings submitted yet.'}
             </div>
           )}
         </div>

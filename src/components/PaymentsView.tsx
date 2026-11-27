@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, FileText, Plus, Printer, Trash2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { tr } from '../i18n/translations';
+import { tr, translateEventType, translatePaymentMode } from '../i18n/translations';
 import { Booking, Payment, PaymentMode } from '../types';
 import { calculateBookingFinancials, formatDateDisplay, formatPKR, todayISO } from '../utils/formatters';
 import { ReceiptModal } from './ReceiptModal';
@@ -16,6 +16,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
   const canEdit = can('payments', 'edit');
   const canDelete = can('payments', 'delete');
   const canViewInvoices = can('invoices', 'view');
+  const isUr = lang === 'ur';
 
   const activeBookings = useMemo(
     () => db.bookings.filter((b) => !b.deleted_at && b.status !== 'Cancelled'),
@@ -38,7 +39,9 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
   const [paymentDate, setPaymentDate] = useState<string>(todayISO());
   const [mode, setMode] = useState<PaymentMode>('Cash');
   const [referenceNo, setReferenceNo] = useState<string>('');
-  const [receivedBy, setReceivedBy] = useState<string>(currentUser?.full_name || 'Accounts Desk');
+  const [receivedBy, setReceivedBy] = useState<string>(
+    currentUser?.full_name || (isUr ? 'اکاؤنٹس ڈیسک' : 'Accounts Desk')
+  );
   const [notes, setNotes] = useState<string>('');
   const [receiptTarget, setReceiptTarget] = useState<{ payment: Payment; booking: Booking } | null>(null);
   const [formMsg, setFormMsg] = useState<string | null>(null);
@@ -69,7 +72,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
     if (!selectedBooking) return;
     const numeric = Number(amount);
     if (!numeric || numeric <= 0) {
-      setFormMsg('Enter a valid positive amount in PKR.');
+      setFormMsg(isUr ? 'روپے میں درست مثبت رقم درج کریں۔' : 'Enter a valid positive amount in PKR.');
       return;
     }
 
@@ -79,7 +82,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
       payment_date: paymentDate,
       mode,
       reference_no: referenceNo.trim(),
-      received_by: receivedBy.trim() || 'Accounts Desk',
+      received_by: receivedBy.trim() || (isUr ? 'اکاؤنٹس ڈیسک' : 'Accounts Desk'),
       notes: notes.trim(),
     });
 
@@ -87,10 +90,14 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
       setAmount('');
       setReferenceNo('');
       setNotes('');
-      setFormMsg(`Recorded ${res.payment.receipt_number}`);
+      setFormMsg(
+        isUr
+          ? `رسید ${res.payment.receipt_number} محفوظ کر لی گئی۔`
+          : `Recorded ${res.payment.receipt_number}`
+      );
       setReceiptTarget({ payment: res.payment, booking: selectedBooking });
     } else {
-      setFormMsg(res.error || 'Failed to record payment');
+      setFormMsg(res.error || (isUr ? 'ادائیگی محفوظ نہیں ہو سکی۔' : 'Failed to record payment'));
     }
   };
 
@@ -100,7 +107,9 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
       <div className="glass-panel rounded-2xl p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex-1 min-w-[260px]">
-            <label className="block text-xs text-slate-400 mb-1.5">Select Booking Account</label>
+            <label className="block text-xs text-slate-400 mb-1.5">
+              {isUr ? 'بکنگ اکاؤنٹ منتخب کریں' : 'Select Booking Account'}
+            </label>
             <select
               value={selectedBooking?.id || ''}
               onChange={(e) => setSelectedBookingId(e.target.value)}
@@ -108,7 +117,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
             >
               {activeBookings.map((bk) => (
                 <option key={bk.id} value={bk.id}>
-                  {bk.booking_code} — {bk.customer_name} ({bk.event_date} · {bk.event_type})
+                  {bk.booking_code} — {bk.customer_name} ({formatDateDisplay(bk.event_date, lang)} ·{' '}
+                  {translateEventType(bk.event_type, lang, db.eventTypes)})
                 </option>
               ))}
             </select>
@@ -121,7 +131,11 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
               className="px-4 py-2.5 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-300 text-xs font-semibold flex items-center gap-1.5 hover:bg-amber-500/20"
             >
               <FileText className="w-4 h-4" />
-              <span>Open Official Invoice ({selectedBooking.invoice_number})</span>
+              <span>
+                {isUr
+                  ? `سرکاری انوائس کھولیں (${selectedBooking.invoice_number})`
+                  : `Open Official Invoice (${selectedBooking.invoice_number})`}
+              </span>
             </button>
           )}
         </div>
@@ -142,7 +156,9 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
                 <div className="text-base font-bold text-amber-300 tabular-nums mt-0.5">{formatPKR(fin.balance)}</div>
               </div>
               <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3">
-                <div className="text-slate-400">Collection Progress</div>
+                <div className="text-slate-400">
+                  {isUr ? 'وصولی کی شرح' : 'Collection Progress'}
+                </div>
                 <div className="text-base font-bold text-cyan-300 tabular-nums mt-0.5">{fin.progressPercent}%</div>
               </div>
             </div>
@@ -160,105 +176,117 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
       <div className={`grid grid-cols-1 ${canEdit ? 'xl:grid-cols-3' : ''} gap-6`}>
         {canEdit && (
           <form onSubmit={handleRecordPayment} className="glass-panel rounded-2xl p-5 space-y-4">
-            <h3 className="text-sm font-bold text-white">Record Advance / Installment</h3>
-          {formMsg && (
-            <div className="p-2.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 text-cyan-200 text-xs">
-              {formMsg}
-            </div>
-          )}
+            <h3 className="text-sm font-bold text-white">
+              {isUr ? 'ایڈوانس / قسط کی ادائیگی درج کریں' : 'Record Advance / Installment'}
+            </h3>
+            {formMsg && (
+              <div className="p-2.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 text-cyan-200 text-xs">
+                {formMsg}
+              </div>
+            )}
 
-          <div>
-            <label className="block text-xs text-slate-300 mb-1">Amount (PKR) *</label>
-            <input
-              type="number"
-              required
-              min={1}
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder={fin ? String(fin.balance) : '50000'}
-              className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white tabular-nums focus:border-cyan-500 focus:outline-none"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-slate-300 mb-1">Date</label>
+              <label className="block text-xs text-slate-300 mb-1">
+                {isUr ? 'رقم (PKR) *' : 'Amount (PKR) *'}
+              </label>
               <input
-                type="date"
+                type="number"
                 required
-                value={paymentDate}
-                onChange={(e) => setPaymentDate(e.target.value)}
-                className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white tabular-nums"
+                min={1}
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder={fin ? String(fin.balance) : '50000'}
+                className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white tabular-nums focus:border-cyan-500 focus:outline-none"
               />
             </div>
-            <div>
-              <label className="block text-xs text-slate-300 mb-1">Mode</label>
-              <select
-                value={mode}
-                onChange={(e) => setMode(e.target.value as PaymentMode)}
-                className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
-              >
-                <option value="Cash">Cash</option>
-                <option value="Online">Online / IBFT</option>
-              </select>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-slate-300 mb-1">{tr('dateCol', lang)}</label>
+                <input
+                  type="date"
+                  required
+                  value={paymentDate}
+                  onChange={(e) => setPaymentDate(e.target.value)}
+                  className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white tabular-nums"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-300 mb-1">{tr('modeCol', lang)}</label>
+                <select
+                  value={mode}
+                  onChange={(e) => setMode(e.target.value as PaymentMode)}
+                  className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                >
+                  <option value="Cash">{translatePaymentMode('Cash', lang)}</option>
+                  <option value="Online">{translatePaymentMode('Online', lang)}</option>
+                </select>
+              </div>
             </div>
-          </div>
 
-          <div>
-            <label className="block text-xs text-slate-300 mb-1">Reference Number</label>
-            <input
-              type="text"
-              value={referenceNo}
-              onChange={(e) => setReferenceNo(e.target.value)}
-              placeholder="IBFT / Slip / Cheque Ref"
-              className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
-            />
-          </div>
+            <div>
+              <label className="block text-xs text-slate-300 mb-1">
+                {isUr ? 'حوالہ نمبر' : 'Reference Number'}
+              </label>
+              <input
+                type="text"
+                value={referenceNo}
+                onChange={(e) => setReferenceNo(e.target.value)}
+                placeholder={isUr ? 'بینک حوالہ / سلپ / چیک نمبر' : 'IBFT / Slip / Cheque Ref'}
+                className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+              />
+            </div>
 
-          <div>
-            <label className="block text-xs text-slate-300 mb-1">Received By</label>
-            <input
-              type="text"
-              required
-              value={receivedBy}
-              onChange={(e) => setReceivedBy(e.target.value)}
-              className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
-            />
-          </div>
+            <div>
+              <label className="block text-xs text-slate-300 mb-1">
+                {isUr ? 'وصول کنندہ' : 'Received By'}
+              </label>
+              <input
+                type="text"
+                required
+                value={receivedBy}
+                onChange={(e) => setReceivedBy(e.target.value)}
+                className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+              />
+            </div>
 
-          <div>
-            <label className="block text-xs text-slate-300 mb-1">{tr('notes', lang)}</label>
-            <input
-              type="text"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Advance / 2nd Installment / Final Settlement"
-              className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
-            />
-          </div>
+            <div>
+              <label className="block text-xs text-slate-300 mb-1">{tr('notes', lang)}</label>
+              <input
+                type="text"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder={isUr ? 'ایڈوانس / دوسری قسط / حتمی ادائیگی' : 'Advance / 2nd Installment / Final Settlement'}
+                className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+              />
+            </div>
 
-          <button
-            type="submit"
-            disabled={!selectedBooking}
-            className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold flex items-center justify-center gap-1.5"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Record Payment & Generate Receipt</span>
-          </button>
-        </form>
+            <button
+              type="submit"
+              disabled={!selectedBooking}
+              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold flex items-center justify-center gap-1.5"
+            >
+              <Plus className="w-4 h-4" />
+              <span>{isUr ? 'ادائیگی محفوظ کریں اور رسید بنائیں' : 'Record Payment & Generate Receipt'}</span>
+            </button>
+          </form>
         )}
 
         {/* Payment History + Planned Installments */}
         <div className={`${canEdit ? 'xl:col-span-2' : ''} space-y-6`}>
           {bookingInstallments.length > 0 && (
             <div className="glass-panel rounded-2xl p-5">
-              <h3 className="text-sm font-bold text-white mb-3">Planned Installment Schedule</h3>
+              <h3 className="text-sm font-bold text-white mb-3">
+                {isUr ? 'طے شدہ اقساط کا شیڈول' : 'Planned Installment Schedule'}
+              </h3>
               <div className="divide-y divide-slate-800/70">
                 {bookingInstallments.map((ins) => (
                   <div key={ins.id} className="py-2.5 flex items-center justify-between gap-3 text-xs">
                     <div>
                       <div className="font-semibold text-slate-100">{ins.title}</div>
-                      <div className="text-slate-400 tabular-nums">Due: {formatDateDisplay(ins.due_date, lang)}</div>
+                      <div className="text-slate-400 tabular-nums">
+                        {isUr ? 'آخری تاریخ:' : 'Due:'} {formatDateDisplay(ins.due_date, lang)}
+                      </div>
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="font-bold text-cyan-300 tabular-nums">{formatPKR(ins.amount)}</span>
@@ -273,7 +301,9 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
                         }`}
                       >
                         <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>{ins.is_paid ? 'Cleared' : 'Mark Paid'}</span>
+                        <span>
+                          {ins.is_paid ? (isUr ? 'وصول شدہ' : 'Cleared') : isUr ? 'وصول نشان زد کریں' : 'Mark Paid'}
+                        </span>
                       </button>
                     </div>
                   </div>
@@ -284,17 +314,21 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
 
           <div className="glass-panel rounded-2xl overflow-hidden">
             <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white">Payment Receipts Ledger</h3>
-              <span className="text-xs text-slate-400 tabular-nums">{bookingPayments.length} receipts</span>
+              <h3 className="text-sm font-bold text-white">
+                {isUr ? 'وصولی رسیدوں کا کھاتہ' : 'Payment Receipts Ledger'}
+              </h3>
+              <span className="text-xs text-slate-400 tabular-nums">
+                {bookingPayments.length} {isUr ? 'رسیدیں' : 'receipts'}
+              </span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead className="bg-slate-900/70 text-slate-400 border-b border-slate-800">
                   <tr>
-                    <th className="py-2.5 px-4 text-start">Receipt & Date</th>
-                    <th className="py-2.5 px-4 text-start">Mode & Ref</th>
-                    <th className="py-2.5 px-4 text-start">Received By</th>
-                    <th className="py-2.5 px-4 text-end">Amount</th>
+                    <th className="py-2.5 px-4 text-start">{isUr ? 'رسید اور تاریخ' : 'Receipt & Date'}</th>
+                    <th className="py-2.5 px-4 text-start">{isUr ? 'طریقہ اور حوالہ' : 'Mode & Ref'}</th>
+                    <th className="py-2.5 px-4 text-start">{isUr ? 'وصول کنندہ' : 'Received By'}</th>
+                    <th className="py-2.5 px-4 text-end">{tr('amountCol', lang)}</th>
                     <th className="py-2.5 px-4 text-end">{tr('actions', lang)}</th>
                   </tr>
                 </thead>
@@ -308,7 +342,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
                         </div>
                       </td>
                       <td className="py-3 px-4">
-                        <div className="font-medium text-slate-200">{p.mode}</div>
+                        <div className="font-medium text-slate-200">{translatePaymentMode(p.mode, lang)}</div>
                         <div className="text-[11px] text-slate-400 tabular-nums">{p.reference_no || '—'}</div>
                       </td>
                       <td className="py-3 px-4">
@@ -324,7 +358,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
                             <button
                               type="button"
                               onClick={() => setReceiptTarget({ payment: p, booking: selectedBooking })}
-                              title="Print Receipt"
+                              title={tr('printThermalReceipt', lang)}
                               className="p-1.5 rounded-lg border border-slate-800 text-slate-300 hover:text-cyan-300"
                             >
                               <Printer className="w-3.5 h-3.5" />

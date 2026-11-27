@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { FileText, Printer, Search } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { translateStatus } from '../i18n/translations';
+import { tr, translateEventType, translateStatus } from '../i18n/translations';
 import { Booking } from '../types';
 import { calculateBookingFinancials, formatDateDisplay, formatPKR } from '../utils/formatters';
 
@@ -13,6 +13,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({ onOpenInvoice }) => 
   const { db, lang } = useApp();
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Paid' | 'Balance Due'>('All');
+  const isUr = lang === 'ur';
 
   const activeBookings = useMemo(
     () =>
@@ -47,19 +48,30 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({ onOpenInvoice }) => 
   const totalCollected = useMemo(() => rows.reduce((s, r) => s + r.fin.totalPaid, 0), [rows]);
   const totalOutstanding = useMemo(() => rows.reduce((s, r) => s + r.fin.balance, 0), [rows]);
 
+  const filterLabel = (st: 'All' | 'Paid' | 'Balance Due') => {
+    if (!isUr) return st;
+    if (st === 'All') return 'تمام';
+    if (st === 'Paid') return 'مکمل ادا شدہ';
+    return 'واجب الادا';
+  };
+
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="glass-panel rounded-2xl p-4">
-          <div className="text-xs text-slate-400">Filtered Invoices Billed</div>
+          <div className="text-xs text-slate-400">
+            {isUr ? 'منتخب انوائسز کا کل بل' : 'Filtered Invoices Billed'}
+          </div>
           <div className="text-xl font-bold text-white tabular-nums mt-1">{formatPKR(totalBilled)}</div>
         </div>
         <div className="glass-panel rounded-2xl p-4">
-          <div className="text-xs text-slate-400">Collected Against Invoices</div>
+          <div className="text-xs text-slate-400">
+            {isUr ? 'انوائسز کی مد میں وصول شدہ' : 'Collected Against Invoices'}
+          </div>
           <div className="text-xl font-bold text-emerald-400 tabular-nums mt-1">{formatPKR(totalCollected)}</div>
         </div>
         <div className="glass-panel rounded-2xl p-4">
-          <div className="text-xs text-slate-400">Remaining Balance</div>
+          <div className="text-xs text-slate-400">{tr('remainingBalance', lang)}</div>
           <div className="text-xl font-bold text-amber-400 tabular-nums mt-1">{formatPKR(totalOutstanding)}</div>
         </div>
       </div>
@@ -71,7 +83,11 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({ onOpenInvoice }) => 
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search invoice #, booking code, customer, or phone..."
+            placeholder={
+              isUr
+                ? 'بل نمبر، بکنگ کوڈ، گاہک یا موبائل نمبر سے تلاش کریں...'
+                : 'Search invoice #, booking code, customer, or phone...'
+            }
             className="w-full bg-slate-950/70 border border-slate-800 rounded-xl py-2 pl-9 pr-3 rtl:pl-3 rtl:pr-9 text-xs text-white"
           />
         </div>
@@ -87,7 +103,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({ onOpenInvoice }) => 
                   : 'border-slate-800 bg-slate-900/60 text-slate-400'
               }`}
             >
-              {st}
+              {filterLabel(st)}
             </button>
           ))}
         </div>
@@ -97,28 +113,30 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({ onOpenInvoice }) => 
         <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
           <h3 className="text-sm font-bold text-white flex items-center gap-2">
             <FileText className="w-4 h-4 text-cyan-400" />
-            <span>Invoices Directory</span>
+            <span>{isUr ? 'انوائسز کی فہرست' : 'Invoices Directory'}</span>
           </h3>
-          <span className="text-xs text-slate-400 tabular-nums">{rows.length} invoices</span>
+          <span className="text-xs text-slate-400 tabular-nums">
+            {rows.length} {isUr ? 'انوائسز' : 'invoices'}
+          </span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead className="bg-slate-900/70 text-slate-400 border-b border-slate-800">
               <tr>
-                <th className="py-2.5 px-4 text-start">Invoice #</th>
-                <th className="py-2.5 px-4 text-start">Booking &amp; Customer</th>
-                <th className="py-2.5 px-4 text-start">Event Date</th>
-                <th className="py-2.5 px-4 text-end">Agreed Total</th>
-                <th className="py-2.5 px-4 text-end">Paid</th>
-                <th className="py-2.5 px-4 text-end">Balance</th>
-                <th className="py-2.5 px-4 text-end">Action</th>
+                <th className="py-2.5 px-4 text-start">{isUr ? 'بل نمبر' : 'Invoice #'}</th>
+                <th className="py-2.5 px-4 text-start">{isUr ? 'بکنگ اور گاہک' : 'Booking & Customer'}</th>
+                <th className="py-2.5 px-4 text-start">{tr('eventDate', lang)}</th>
+                <th className="py-2.5 px-4 text-end">{tr('totalBill', lang)}</th>
+                <th className="py-2.5 px-4 text-end">{tr('paidAmount', lang)}</th>
+                <th className="py-2.5 px-4 text-end">{tr('remainingBalance', lang)}</th>
+                <th className="py-2.5 px-4 text-end">{tr('actions', lang)}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/70">
               {rows.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-8 text-center text-slate-500">
-                    No matching invoices found.
+                    {tr('noRecords', lang)}
                   </td>
                 </tr>
               ) : (
@@ -131,7 +149,8 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({ onOpenInvoice }) => 
                     <td className="py-3 px-4">
                       <div className="font-semibold text-white">{bk.customer_name}</div>
                       <div className="text-[11px] text-slate-400">
-                        {bk.customer_phone} · {bk.event_type} · {translateStatus(bk.status, lang)}
+                        {bk.customer_phone} · {translateEventType(bk.event_type, lang, db.eventTypes)} ·{' '}
+                        {translateStatus(bk.status, lang)}
                       </div>
                     </td>
                     <td className="py-3 px-4 text-slate-300 tabular-nums">
@@ -141,7 +160,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({ onOpenInvoice }) => 
                       {formatPKR(fin.grandTotal)}
                       {fin.discountAmount > 0 && (
                         <div className="text-[10px] text-amber-400">
-                          Disc -{formatPKR(fin.discountAmount)}
+                          {isUr ? 'رعایت' : 'Disc'} -{formatPKR(fin.discountAmount)}
                         </div>
                       )}
                     </td>
@@ -160,7 +179,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({ onOpenInvoice }) => 
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20 font-medium"
                       >
                         <Printer className="w-3.5 h-3.5" />
-                        <span>View / Print A4</span>
+                        <span>{isUr ? 'انوائس / پرنٹ اے-4' : 'View / Print A4'}</span>
                       </button>
                     </td>
                   </tr>

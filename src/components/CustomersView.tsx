@@ -29,6 +29,7 @@ export const CustomersView: React.FC = () => {
 
   const canEdit = can('customers', 'edit');
   const canDelete = can('customers', 'delete');
+  const isUr = lang === 'ur';
 
   const openNew = () => {
     setEditing(null);
@@ -58,15 +59,23 @@ export const CustomersView: React.FC = () => {
     e.preventDefault();
     setError(null);
     if (!fullName.trim()) {
-      setError('Customer name is required.');
+      setError(isUr ? 'گاہک کا نام درج کرنا لازمی ہے۔' : 'Customer name is required.');
       return;
     }
     if (!isValidPakistaniPhone(phone)) {
-      setError('Enter a valid Pakistani mobile number (03XX-XXXXXXX).');
+      setError(
+        isUr
+          ? 'درست پاکستانی موبائل نمبر درج کریں (03XX-XXXXXXX)۔'
+          : 'Enter a valid Pakistani mobile number (03XX-XXXXXXX).'
+      );
       return;
     }
     if (nic.trim() && !isValidPakistaniNIC(nic)) {
-      setError('Enter a valid 13-digit CNIC (XXXXX-XXXXXXX-X).');
+      setError(
+        isUr
+          ? 'درست 13 ہندسوں کا شناختی کارڈ نمبر درج کریں (XXXXX-XXXXXXX-X)۔'
+          : 'Enter a valid 13-digit CNIC (XXXXX-XXXXXXX-X).'
+      );
       return;
     }
     setSaving(true);
@@ -81,7 +90,7 @@ export const CustomersView: React.FC = () => {
     });
     setSaving(false);
     if (!res.ok) {
-      setError(res.error || 'Could not save customer.');
+      setError(res.error || (isUr ? 'گاہک محفوظ نہیں ہو سکا۔' : 'Could not save customer.'));
       return;
     }
     setModalOpen(false);
@@ -133,7 +142,11 @@ export const CustomersView: React.FC = () => {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search customer name, phone, CNIC, address..."
+            placeholder={
+              isUr
+                ? 'نام، فون، شناختی کارڈ یا پتہ سے گاہک تلاش کریں...'
+                : 'Search customer name, phone, CNIC, address...'
+            }
             className="w-full bg-slate-950/70 border border-slate-800 rounded-xl py-2 pl-9 pr-3 rtl:pl-3 rtl:pr-9 text-xs text-white focus:border-cyan-500 focus:outline-none"
           />
         </div>
@@ -141,7 +154,9 @@ export const CustomersView: React.FC = () => {
         <div className="flex items-center gap-3">
           <span className="text-xs text-slate-400 tabular-nums flex items-center gap-1.5">
             <Users className="w-4 h-4 text-cyan-400" />
-            <span>{filtered.length} customers</span>
+            <span>
+              {filtered.length} {isUr ? 'گاہک' : 'customers'}
+            </span>
           </span>
           {canEdit && (
             <button
@@ -150,7 +165,7 @@ export const CustomersView: React.FC = () => {
               className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap"
             >
               <Plus className="w-4 h-4" />
-              <span>Add Customer</span>
+              <span>{isUr ? 'نیا گاہک شامل کریں' : 'Add Customer'}</span>
             </button>
           )}
         </div>
@@ -161,11 +176,17 @@ export const CustomersView: React.FC = () => {
           <table className="w-full text-xs">
             <thead className="bg-slate-900/80 text-slate-400 border-b border-slate-800">
               <tr>
-                <th className="py-3 px-4 text-start">Customer</th>
-                <th className="py-3 px-4 text-start">Contact &amp; CNIC</th>
-                <th className="py-3 px-4 text-start">Address</th>
-                <th className="py-3 px-4 text-end">Bookings &amp; Ledger</th>
-                {(canEdit || canDelete) && <th className="py-3 px-4 text-end">{tr('actions', lang)}</th>}
+                <th className="py-3 px-4 text-start">{tr('customerName', lang)}</th>
+                <th className="py-3 px-4 text-start">
+                  {isUr ? 'رابطہ اور شناختی کارڈ' : 'Contact & CNIC'}
+                </th>
+                <th className="py-3 px-4 text-start">{tr('address', lang)}</th>
+                <th className="py-3 px-4 text-end">
+                  {isUr ? 'بکنگز اور کھاتہ' : 'Bookings & Ledger'}
+                </th>
+                {(canEdit || canDelete) && (
+                  <th className="py-3 px-4 text-end">{tr('actions', lang)}</th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/70">
@@ -190,7 +211,7 @@ export const CustomersView: React.FC = () => {
                         <span>{c.phone}</span>
                       </div>
                       <div className="text-[11px] text-slate-400 tabular-nums mt-0.5">
-                        CNIC: {c.nic || '—'}
+                        {isUr ? 'شناختی کارڈ:' : 'CNIC:'} {c.nic || '—'}
                       </div>
                       {c.email && (
                         <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
@@ -207,19 +228,26 @@ export const CustomersView: React.FC = () => {
                     </td>
                     <td className="py-3.5 px-4 text-end">
                       <div className="font-semibold text-cyan-300 tabular-nums">
-                        {stats.count} {stats.count === 1 ? 'event' : 'events'}
+                        {stats.count}{' '}
+                        {isUr ? 'تقریبات' : stats.count === 1 ? 'event' : 'events'}
                       </div>
                       <div className="text-[11px] text-slate-400 tabular-nums mt-0.5">
-                        Billed: {formatPKR(stats.totalAgreed)} · Paid: {formatPKR(stats.totalPaid)}
+                        {isUr ? 'کل بل:' : 'Billed:'} {formatPKR(stats.totalAgreed)} ·{' '}
+                        {isUr ? 'وصول:' : 'Paid:'} {formatPKR(stats.totalPaid)}
                       </div>
                       <div className="text-[11px] tabular-nums mt-0.5">
                         {bal > 0 ? (
-                          <span className="text-amber-300 font-semibold">Bal: {formatPKR(bal)}</span>
+                          <span className="text-amber-300 font-semibold">
+                            {isUr ? 'بقایا:' : 'Bal:'} {formatPKR(bal)}
+                          </span>
                         ) : (
-                          <span className="text-emerald-400">Settled</span>
+                          <span className="text-emerald-400">{isUr ? 'مکمل ادا شدہ' : 'Settled'}</span>
                         )}
                         {stats.lastDate && (
-                          <span className="text-slate-500"> · Last: {formatDateDisplay(stats.lastDate, lang)}</span>
+                          <span className="text-slate-500">
+                            {' '}
+                            · {isUr ? 'آخری:' : 'Last:'} {formatDateDisplay(stats.lastDate, lang)}
+                          </span>
                         )}
                       </div>
                     </td>
@@ -269,7 +297,13 @@ export const CustomersView: React.FC = () => {
           <div className="glass-panel rounded-2xl max-w-lg w-full p-5 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-sm font-bold text-white">
-                {editing ? 'Edit Customer' : 'Add Customer'}
+                {editing
+                  ? isUr
+                    ? 'گاہک میں ترمیم'
+                    : 'Edit Customer'
+                  : isUr
+                  ? 'نیا گاہک شامل کریں'
+                  : 'Add Customer'}
               </h3>
               <button
                 type="button"
@@ -288,7 +322,7 @@ export const CustomersView: React.FC = () => {
 
             <form onSubmit={handleSave} className="space-y-3 text-xs">
               <div>
-                <label className="block text-slate-300 mb-1">Full Name *</label>
+                <label className="block text-slate-300 mb-1">{tr('customerName', lang)} *</label>
                 <input
                   type="text"
                   required
@@ -299,7 +333,7 @@ export const CustomersView: React.FC = () => {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-300 mb-1">Mobile Phone *</label>
+                  <label className="block text-slate-300 mb-1">{tr('phone', lang)} *</label>
                   <input
                     type="text"
                     required
@@ -310,7 +344,7 @@ export const CustomersView: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-300 mb-1">CNIC Number</label>
+                  <label className="block text-slate-300 mb-1">{tr('nic', lang)}</label>
                   <input
                     type="text"
                     value={nic}
@@ -321,7 +355,7 @@ export const CustomersView: React.FC = () => {
                 </div>
               </div>
               <div>
-                <label className="block text-slate-300 mb-1">Address</label>
+                <label className="block text-slate-300 mb-1">{tr('address', lang)}</label>
                 <input
                   type="text"
                   value={address}
@@ -330,7 +364,7 @@ export const CustomersView: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-slate-300 mb-1">Email</label>
+                <label className="block text-slate-300 mb-1">{tr('email', lang)}</label>
                 <input
                   type="email"
                   value={email}
@@ -339,7 +373,7 @@ export const CustomersView: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-slate-300 mb-1">Notes</label>
+                <label className="block text-slate-300 mb-1">{tr('notes', lang)}</label>
                 <textarea
                   rows={2}
                   value={notes}
@@ -360,7 +394,7 @@ export const CustomersView: React.FC = () => {
                   disabled={saving}
                   className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-semibold disabled:opacity-50"
                 >
-                  {saving ? 'Saving...' : tr('save', lang)}
+                  {saving ? tr('saving', lang) : tr('save', lang)}
                 </button>
               </div>
             </form>

@@ -1,9 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import { Ban, CreditCard, Edit3, FileText, Plus, Search, Trash2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { tr, translateFloor, translateStatus } from '../i18n/translations';
+import { tr, translateEventType, translateFloor, translateStatus } from '../i18n/translations';
 import { Booking, BookingStatus } from '../types';
-import { calculateBookingFinancials, formatDateDisplay, formatPKR, formatTime12h } from '../utils/formatters';
+import {
+  calculateBookingFinancials,
+  formatDateDisplay,
+  formatPKR,
+  formatTime12h,
+} from '../utils/formatters';
 import { CancelBookingModal } from './CancelBookingModal';
 
 interface BookingsViewProps {
@@ -20,6 +25,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
   onGoToPayments,
 }) => {
   const { db, lang, can, softDeleteBooking } = useApp();
+  const isUr = lang === 'ur';
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | BookingStatus>('ALL');
   const [cancellingBooking, setCancellingBooking] = useState<Booking | null>(null);
@@ -88,7 +94,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                   : 'text-slate-400 hover:text-slate-200 border border-transparent'
               }`}
             >
-              {st === 'ALL' ? 'All' : translateStatus(st, lang)}
+              {st === 'ALL' ? tr('all', lang) : translateStatus(st, lang)}
             </button>
           ))}
         </div>
@@ -111,18 +117,39 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
           <table className="w-full text-xs">
             <thead className="bg-slate-900/80 text-slate-400 border-b border-slate-800">
               <tr>
-                <th className="py-3 px-4 text-start">Code &amp; Customer</th>
-                <th className="py-3 px-4 text-start">Event &amp; Floors</th>
-                <th className="py-3 px-4 text-start">Status &amp; Adjustments</th>
+                <th className="py-3 px-4 text-start">
+                  {isUr ? 'کوڈ اور گاہک' : 'Code & Customer'}
+                </th>
+                <th className="py-3 px-4 text-start">
+                  {isUr ? 'تقریب اور فلورز' : 'Event & Floors'}
+                </th>
+                <th className="py-3 px-4 text-start">
+                  {isUr ? 'حالت اور ایڈجسٹمنٹس' : 'Status & Adjustments'}
+                </th>
                 <th className="py-3 px-4 text-end">
-                  {canSeeProfitAndExpenses ? 'Agreed Total / Profit' : 'Agreed Total'}
+                  {canSeeProfitAndExpenses
+                    ? isUr
+                      ? 'حتمی بل / منافع'
+                      : 'Agreed Total / Profit'
+                    : isUr
+                    ? 'حتمی بل'
+                    : 'Agreed Total'}
                 </th>
                 <th className="py-3 px-4 text-end">{tr('actions', lang)}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/70">
               {filtered.map((bk) => {
-                const fin = calculateBookingFinancials(bk, db.bookingItems, db.payments, db.expenses);
+                const fin = calculateBookingFinancials(
+                  bk,
+                  db.bookingItems,
+                  db.payments,
+                  db.expenses
+                );
+                const eventLabel = translateEventType(bk.event_type, lang, db.eventTypes);
+                const floorText = bk.floors
+                  .map((f) => translateFloor(f, lang, db.floors))
+                  .join(isUr ? '، ' : ', ');
                 return (
                   <tr key={bk.id} className="hover:bg-slate-900/40 transition-colors">
                     <td className="py-3.5 px-4">
@@ -135,17 +162,19 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
 
                     <td className="py-3.5 px-4">
                       <div className="font-medium text-slate-100">
-                        {bk.event_type} · {bk.guests_count} guests
+                        {eventLabel} · <span className="tabular-nums">{bk.guests_count}</span>{' '}
+                        {isUr ? 'مہمان' : 'guests'}
                       </div>
                       <div className="text-[11px] text-slate-300 tabular-nums mt-0.5">
-                        {formatDateDisplay(bk.event_date, lang)} · {formatTime12h(bk.start_time)}–{formatTime12h(bk.end_time)}
+                        {formatDateDisplay(bk.event_date, lang)} ·{' '}
+                        {formatTime12h(bk.start_time, lang)}–{formatTime12h(bk.end_time, lang)}
                       </div>
-                      <div className="text-[11px] text-violet-300 mt-0.5">
-                        {bk.floors.map((f) => translateFloor(f, lang)).join(', ')}
-                      </div>
+                      <div className="text-[11px] text-violet-300 mt-0.5">{floorText}</div>
                       {bk.reschedule_history && bk.reschedule_history.length > 0 && (
                         <div className="text-[11px] text-amber-300/80 mt-0.5 tabular-nums">
-                          Rescheduled {bk.reschedule_history.length}×
+                          {isUr
+                            ? `${bk.reschedule_history.length} بار تاریخ تبدیل`
+                            : `Rescheduled ${bk.reschedule_history.length}×`}
                         </div>
                       )}
                     </td>
@@ -156,39 +185,57 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                       </span>
                       {bk.status === 'Cancelled' && bk.cancellation_details && (
                         <div className="text-[11px] text-rose-300/90 tabular-nums mt-0.5">
-                          Deducted: {formatPKR(bk.cancellation_details.deduction_amount)} · Refund: {formatPKR(bk.cancellation_details.refund_amount)}
+                          {isUr ? 'کٹوتی:' : 'Deducted:'}{' '}
+                          {formatPKR(bk.cancellation_details.deduction_amount)} ·{' '}
+                          {isUr ? 'واپسی:' : 'Refund:'}{' '}
+                          {formatPKR(bk.cancellation_details.refund_amount)}
                         </div>
                       )}
                       {fin.discountAmount > 0 && (
                         <div className="text-[11px] text-cyan-300 tabular-nums mt-0.5">
-                          Discount: -{formatPKR(fin.discountAmount)}
+                          {isUr ? 'رعایت:' : 'Discount:'} -{formatPKR(fin.discountAmount)}
                         </div>
                       )}
                       {bk.crate_credit_amount > 0 && (
                         <div className="text-[11px] text-emerald-400 tabular-nums mt-0.5">
-                          Crate Credit: -{formatPKR(bk.crate_credit_amount)}
+                          {isUr ? 'کریٹ کریڈٹ:' : 'Crate Credit:'} -
+                          {formatPKR(bk.crate_credit_amount)}
                         </div>
                       )}
                       {fin.lateCharge > 0 && (
                         <div className="text-[11px] text-amber-300 tabular-nums mt-0.5">
-                          Late Charge: +{formatPKR(fin.lateCharge)}
+                          {isUr ? 'تاخیر چارج:' : 'Late Charge:'} +{formatPKR(fin.lateCharge)}
                         </div>
                       )}
                     </td>
 
                     <td className="py-3.5 px-4 text-end min-w-[220px]">
-                      <div className="font-bold text-white tabular-nums">{formatPKR(fin.grandTotal)}</div>
+                      <div className="font-bold text-white tabular-nums">
+                        {formatPKR(fin.grandTotal)}
+                      </div>
                       <div className="text-[11px] text-slate-400 tabular-nums mt-0.5">
-                        Paid: {formatPKR(fin.totalPaid)} ·{' '}
-                        <span className={fin.balance > 0 ? 'text-amber-300 font-semibold' : 'text-emerald-400'}>
-                          Bal: {formatPKR(fin.balance)}
+                        {isUr ? 'وصول:' : 'Paid:'} {formatPKR(fin.totalPaid)} ·{' '}
+                        <span
+                          className={
+                            fin.balance > 0 ? 'text-amber-300 font-semibold' : 'text-emerald-400'
+                          }
+                        >
+                          {isUr ? 'بقایا:' : 'Bal:'} {formatPKR(fin.balance)}
                         </span>
                       </div>
                       {canSeeProfitAndExpenses && (
                         <div className="text-[11px] tabular-nums mt-0.5">
-                          <span className="text-slate-500">Exp: {formatPKR(fin.linkedExpensesTotal)} · </span>
-                          <span className={fin.bookingProfit >= 0 ? 'text-emerald-400 font-semibold' : 'text-rose-400 font-semibold'}>
-                            Profit: {formatPKR(fin.bookingProfit)}
+                          <span className="text-slate-500">
+                            {isUr ? 'خرچ:' : 'Exp:'} {formatPKR(fin.linkedExpensesTotal)} ·{' '}
+                          </span>
+                          <span
+                            className={
+                              fin.bookingProfit >= 0
+                                ? 'text-emerald-400 font-semibold'
+                                : 'text-rose-400 font-semibold'
+                            }
+                          >
+                            {isUr ? 'منافع:' : 'Profit:'} {formatPKR(fin.bookingProfit)}
                           </span>
                         </div>
                       )}
@@ -205,7 +252,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                         <button
                           type="button"
                           onClick={() => onEditBooking(bk)}
-                          title={canModify ? tr('edit', lang) : 'View Details'}
+                          title={canModify ? tr('edit', lang) : tr('view', lang)}
                           className="p-2 rounded-lg border border-slate-800 bg-slate-900/70 text-slate-300 hover:text-cyan-300 hover:border-cyan-500/40"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
@@ -214,7 +261,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                           <button
                             type="button"
                             onClick={() => onOpenInvoice(bk)}
-                            title="Invoice PDF"
+                            title={tr('invoices', lang)}
                             className="p-2 rounded-lg border border-slate-800 bg-slate-900/70 text-slate-300 hover:text-amber-300 hover:border-amber-500/40"
                           >
                             <FileText className="w-3.5 h-3.5" />
@@ -224,7 +271,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                           <button
                             type="button"
                             onClick={() => onGoToPayments(bk.id)}
-                            title="Record Payment"
+                            title={tr('payments', lang)}
                             className="p-2 rounded-lg border border-slate-800 bg-slate-900/70 text-slate-300 hover:text-emerald-300 hover:border-emerald-500/40"
                           >
                             <CreditCard className="w-3.5 h-3.5" />
@@ -268,7 +315,10 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
       </div>
 
       {cancellingBooking && (
-        <CancelBookingModal booking={cancellingBooking} onClose={() => setCancellingBooking(null)} />
+        <CancelBookingModal
+          booking={cancellingBooking}
+          onClose={() => setCancellingBooking(null)}
+        />
       )}
     </div>
   );

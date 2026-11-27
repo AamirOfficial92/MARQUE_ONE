@@ -119,8 +119,21 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   role public.user_role NOT NULL DEFAULT 'manager',
   is_active BOOLEAN NOT NULL DEFAULT true,
   preferred_theme TEXT CHECK (preferred_theme IN ('dark', 'light')),
+  preferred_language TEXT CHECK (preferred_language IS NULL OR preferred_language IN ('en', 'ur')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Floors (Bilingual floor labels per Hall; preserves key 'First' | 'Second' | 'Third' | 'Full Hall')
+CREATE TABLE IF NOT EXISTS public.floors (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  hall_id UUID NOT NULL REFERENCES public.halls(id) ON DELETE CASCADE DEFAULT '11111111-1111-4111-8111-111111111101',
+  floor_key TEXT NOT NULL CHECK (floor_key IN ('First', 'Second', 'Third', 'Full Hall')),
+  name_en TEXT NOT NULL,
+  name_ur TEXT NOT NULL DEFAULT '',
+  sort_order INT NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (hall_id, floor_key)
 );
 
 -- Per-hall Settings
@@ -209,6 +222,7 @@ CREATE TABLE IF NOT EXISTS public.charges_catalog (
   name_ur TEXT NOT NULL,
   default_rate NUMERIC(12,2) NOT NULL DEFAULT 0.00,
   unit_label TEXT NOT NULL DEFAULT 'Event',
+  unit_label_ur TEXT NOT NULL DEFAULT '',
   is_default_package BOOLEAN NOT NULL DEFAULT false,
   is_crate_service BOOLEAN NOT NULL DEFAULT false,
   deleted_at TIMESTAMPTZ,
