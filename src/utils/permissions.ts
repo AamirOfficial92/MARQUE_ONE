@@ -145,29 +145,21 @@ export function toPermissionMatrix(
     can_edit: boolean;
     can_delete: boolean;
   }>,
-  fallbackRole?: UserRole
+  role?: UserRole
 ): PermissionMatrixMap {
-  const baseList = fallbackRole
-    ? getDefaultPermissionsForRole(fallbackRole)
-    : PERMISSION_SCREEN_KEYS.map((screen_key) => ({
-        screen_key,
-        can_view: false,
-        can_edit: false,
-        can_delete: false,
-      }));
-
   const map = {} as PermissionMatrixMap;
-  for (const item of baseList) {
-    map[item.screen_key] = { ...item };
+  const isSuperAdmin = role === 'super_admin';
+
+  for (const screen_key of PERMISSION_SCREEN_KEYS) {
+    map[screen_key] = {
+      screen_key,
+      can_view: isSuperAdmin,
+      can_edit: isSuperAdmin,
+      can_delete: isSuperAdmin,
+    };
   }
 
-  if (entries.length > 0) {
-    // If explicit DB entries exist, start from all false (unless super_admin) and overlay exact entries
-    if (fallbackRole !== 'super_admin') {
-      for (const k of PERMISSION_SCREEN_KEYS) {
-        map[k] = { screen_key: k, can_view: false, can_edit: false, can_delete: false };
-      }
-    }
+  if (!isSuperAdmin) {
     for (const row of entries) {
       if ((PERMISSION_SCREEN_KEYS as readonly string[]).includes(row.screen_key)) {
         const key = row.screen_key as PermissionScreenKey;

@@ -250,12 +250,12 @@ export const UsersView: React.FC = () => {
     getPermissionsForUser,
     activeHallId,
     activeHall,
-    supabaseLive,
     manageUserWithEdgeFunction,
   } = useApp();
 
   const isSuperAdmin = currentUser?.role === 'super_admin';
-  const canEditUsers = can('users', 'edit');
+  const isAdmin = currentUser?.role === 'admin';
+  const canEditUsers = (isSuperAdmin || isAdmin) && can('users', 'edit');
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -263,9 +263,22 @@ export const UsersView: React.FC = () => {
   const [role, setRole] = useState<UserRole>('manager');
   const [hallId, setHallId] = useState<string>(activeHallId);
   const [password, setPassword] = useState('');
-  const [createPermissions, setCreatePermissions] = useState<ScreenPermissionEntry[]>(() =>
-    getDefaultPermissionsForRole('manager')
-  );
+  const [createPermissions, setCreatePermissions] = useState<ScreenPermissionEntry[]>(() => {
+    const defaults = getDefaultPermissionsForRole('manager');
+    if (isSuperAdmin) return defaults;
+    return defaults.map((entry) => ({
+      screen_key: entry.screen_key,
+      can_view:
+        entry.can_view &&
+        hasMatrixPermission(currentUserPermissions, currentUser?.role, entry.screen_key, 'view'),
+      can_edit:
+        entry.can_edit &&
+        hasMatrixPermission(currentUserPermissions, currentUser?.role, entry.screen_key, 'edit'),
+      can_delete:
+        entry.can_delete &&
+        hasMatrixPermission(currentUserPermissions, currentUser?.role, entry.screen_key, 'delete'),
+    }));
+  });
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -471,19 +484,19 @@ export const UsersView: React.FC = () => {
 
   return (
     <div className="space-y-5">
-      {supabaseLive && (
-        <div className="glass-panel rounded-2xl p-4 border border-cyan-500/30 flex items-start gap-3 text-xs">
-          <ShieldAlert className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-          <div className="text-slate-300 leading-relaxed">
-            User accounts and per-screen database permissions are enforced both in PostgreSQL Row Level Security and securely managed via the{' '}
-            <code className="text-cyan-300 font-mono">manage-users</code> Edge Function.
-          </div>
+      <div className="glass-panel rounded-2xl p-4 border border-cyan-500/30 flex items-start gap-3 text-xs">
+        <ShieldAlert className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+        <div className="text-slate-300 leading-relaxed">
+          User accounts and per-screen database permissions are enforced both in PostgreSQL Row Level Security and securely managed via the{' '}
+          <code className="text-cyan-300 font-mono">manage-users</code> Edge Function.
         </div>
-      )}
+      </div>
 
       {!canEditUsers && (
         <div className="glass-panel rounded-2xl p-4 border border-amber-500/30 text-xs text-amber-200">
-          You have View-only access to the Users directory. Users Edit permission is required to create accounts or modify screen permissions.
+          {isSuperAdmin || isAdmin
+            ? 'You have View-only access to the Users directory. Users Edit permission is required to create accounts or modify screen permissions.'
+            : 'Managers cannot create or modify staff user accounts.'}
         </div>
       )}
 
@@ -543,11 +556,11 @@ export const UsersView: React.FC = () => {
               </div>
               <div>
                 <label className="block text-xs text-slate-300 mb-1">
-                  Initial Password {supabaseLive ? '*' : '(Optional)'}
+                  Initial Password *
                 </label>
                 <input
                   type="password"
-                  required={supabaseLive}
+                  required
                   minLength={6}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -589,11 +602,29 @@ export const UsersView: React.FC = () => {
                 )}
               </div>
             ) : (
-              <div className="p-3 rounded-xl border border-slate-800 bg-slate-900/60 text-xs flex items-center justify-between">
-                <span className="text-slate-400">Role Template &amp; Hall</span>
-                <span className="font-semibold text-cyan-300">
-                  Hall Manager · {activeHall.name}
-                </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-slate-300 mb-1">Role</label>
+                  <select
+                    value="manager"
+                    onChange={() => handleCreateRoleSelect('manager')}
+                    className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                  >
+                    <option value="manager">Hall Manager</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-300 mb-1">Assigned Hall</label>
+                  <select
+                    value={currentUser?.hall_id || activeHallId}
+                    onChange={() => setHallId(currentUser?.hall_id || activeHallId)}
+                    className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                  >
+                    <option value={currentUser?.hall_id || activeHallId}>
+                      {activeHall.name} ({activeHall.booking_code_prefix})
+                    </option>
+                  </select>
+                </div>
               </div>
             )}
 
@@ -793,26 +824,42 @@ export const UsersView: React.FC = () => {
                       <option value="manager">manager</option>
                     </select>
                   ) : (
-                    <div className="px-3 py-2 rounded-xl border border-slate-800 bg-slate-900/60 text-cyan-300 font-semibold">
-                      {translateRole(editTarget.role, lang)}
-                    </div>
+                    <select
+                      value="manager"
+                      onChange={() => setEditRole('manager')}
+                      className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                    >
+                      <option value="manager">{translateRole('manager', lang)}</option>
+                    </select>
                   )}
                 </div>
 
-                {isSuperAdmin && editRole !== 'super_admin' && (
+                {editRole !== 'super_admin' && (
                   <div>
                     <label className="block text-slate-300 mb-1">Assigned Hall</label>
-                    <select
-                      value={editHallId}
-                      onChange={(e) => setEditHallId(e.target.value)}
-                      className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
-                    >
-                      {db.halls.map((h) => (
-                        <option key={h.id} value={h.id}>
-                          {h.name}
+                    {isSuperAdmin ? (
+                      <select
+                        value={editHallId}
+                        onChange={(e) => setEditHallId(e.target.value)}
+                        className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                      >
+                        {db.halls.map((h) => (
+                          <option key={h.id} value={h.id}>
+                            {h.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <select
+                        value={currentUser?.hall_id || activeHallId}
+                        onChange={() => setEditHallId(currentUser?.hall_id || activeHallId)}
+                        className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                      >
+                        <option value={currentUser?.hall_id || activeHallId}>
+                          {activeHall.name}
                         </option>
-                      ))}
-                    </select>
+                      </select>
+                    )}
                   </div>
                 )}
 

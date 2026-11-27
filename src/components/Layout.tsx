@@ -115,7 +115,6 @@ export const Layout: React.FC<LayoutProps> = ({
     theme,
     toggleTheme,
     signOut,
-    supabaseLive,
   } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [moreDrawerOpen, setMoreDrawerOpen] = useState(false);
@@ -204,7 +203,7 @@ export const Layout: React.FC<LayoutProps> = ({
               {lang === 'ur' ? db.settings.hall_name_ur : db.settings.hall_name}
             </div>
             <div className="text-[11px] text-slate-400 truncate">
-              {supabaseLive ? tr('supabaseLiveBadge', lang) : tr('previewModeBadge', lang)}
+              {tr('supabaseLiveBadge', lang)}
             </div>
           </div>
         </div>

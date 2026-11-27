@@ -7,11 +7,20 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
+function buildCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get('Origin');
+  const allowedOrigin =
+    origin && (origin.startsWith('https://') || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:'))
+      ? origin
+      : 'null';
+
+  return {
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    Vary: 'Origin',
+  };
+}
 
 type UserRole = 'super_admin' | 'admin' | 'manager';
 
@@ -59,6 +68,14 @@ interface ManageUsersPayload {
   hall_id?: string | null;
   is_active?: boolean;
   permissions?: PermissionEntryInput[];
+}
+
+function getAllFalsePermissions(): Record<ScreenKey, PermissionEntryInput> {
+  const map = {} as Record<ScreenKey, PermissionEntryInput>;
+  for (const key of ALL_SCREEN_KEYS) {
+    map[key] = { screen_key: key, can_view: false, can_edit: false, can_delete: false };
+  }
+  return map;
 }
 
 function getDefaultPermissionsForRole(role: UserRole): Record<ScreenKey, PermissionEntryInput> {
@@ -117,10 +134,7 @@ function normalizePermissionsInput(
   if (!input || input.length === 0) {
     return getDefaultPermissionsForRole(fallbackRole);
   }
-  const map = {} as Record<ScreenKey, PermissionEntryInput>;
-  for (const key of ALL_SCREEN_KEYS) {
-    map[key] = { screen_key: key, can_view: false, can_edit: false, can_delete: false };
-  }
+  const map = getAllFalsePermissions();
   for (const row of input) {
     if ((ALL_SCREEN_KEYS as readonly string[]).includes(row.screen_key)) {
       const k = row.screen_key as ScreenKey;
@@ -138,14 +152,36 @@ function normalizePermissionsInput(
   return map;
 }
 
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
+function normalizeDbPermissionRows(
+  rows: PermissionEntryInput[] | null | undefined,
+  role: UserRole
+): Record<ScreenKey, PermissionEntryInput> {
+  if (role === 'super_admin') {
+    return getDefaultPermissionsForRole('super_admin');
+  }
+  const map = getAllFalsePermissions();
+  for (const row of rows || []) {
+    if ((ALL_SCREEN_KEYS as readonly string[]).includes(row.screen_key)) {
+      const k = row.screen_key as ScreenKey;
+      map[k] = {
+        screen_key: k,
+        can_view: Boolean(row.can_view),
+        can_edit: Boolean(row.can_edit),
+        can_delete: Boolean(row.can_delete),
+      };
+    }
+  }
+  return map;
 }
 
 Deno.serve(async (req) => {
+  const corsHeaders = buildCorsHeaders(req);
+  const jsonResponse = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -199,7 +235,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'Only Super Admin or Hall Admin can manage users.' }, 403);
     }
 
-    // Load caller's own permissions for delegation enforcement when caller is Hall Admin
+    // Load caller's own permissions strictly from DB for Hall Admin (never synthesize defaults)
     const callerPermsMap = new Map<ScreenKey, PermissionEntryInput>();
     if (callerRole === 'admin') {
       if (!callerProfile.hall_id) {
@@ -215,19 +251,17 @@ Deno.serve(async (req) => {
         return jsonResponse({ ok: false, error: callerPermErr.message }, 500);
       }
 
-      if (!callerPermRows || callerPermRows.length === 0) {
-        const defaults = getDefaultPermissionsForRole('admin');
-        for (const k of ALL_SCREEN_KEYS) callerPermsMap.set(k, defaults[k]);
-      } else {
-        for (const r of callerPermRows) {
-          if ((ALL_SCREEN_KEYS as readonly string[]).includes(r.screen_key)) {
-            callerPermsMap.set(r.screen_key as ScreenKey, {
-              screen_key: r.screen_key,
-              can_view: Boolean(r.can_view),
-              can_edit: Boolean(r.can_edit),
-              can_delete: Boolean(r.can_delete),
-            });
-          }
+      for (const k of ALL_SCREEN_KEYS) {
+        callerPermsMap.set(k, { screen_key: k, can_view: false, can_edit: false, can_delete: false });
+      }
+      for (const r of callerPermRows || []) {
+        if ((ALL_SCREEN_KEYS as readonly string[]).includes(r.screen_key)) {
+          callerPermsMap.set(r.screen_key as ScreenKey, {
+            screen_key: r.screen_key,
+            can_view: Boolean(r.can_view),
+            can_edit: Boolean(r.can_edit),
+            can_delete: Boolean(r.can_delete),
+          });
         }
       }
 
@@ -272,7 +306,6 @@ Deno.serve(async (req) => {
       const fullName = (payload.full_name || '').trim();
       const phone = (payload.phone || '').trim();
       const requestedRole = (payload.role || 'manager') as UserRole;
-      let targetHallId = payload.hall_id || callerProfile.hall_id || null;
 
       if (!email || !fullName || password.length < 6) {
         return jsonResponse(
@@ -285,6 +318,7 @@ Deno.serve(async (req) => {
         return jsonResponse({ ok: false, error: 'Invalid role specified.' }, 400);
       }
 
+      let targetHallId: string | null = null;
       if (callerRole === 'admin') {
         if (requestedRole !== 'manager') {
           return jsonResponse(
@@ -292,11 +326,30 @@ Deno.serve(async (req) => {
             403
           );
         }
+        if (payload.hall_id !== undefined && payload.hall_id !== callerProfile.hall_id) {
+          return jsonResponse(
+            { ok: false, error: 'Hall Admin can only create users in their own hall.' },
+            403
+          );
+        }
         targetHallId = callerProfile.hall_id;
+      } else {
+        targetHallId = requestedRole === 'super_admin' ? null : payload.hall_id || null;
       }
 
       if (requestedRole !== 'super_admin' && !targetHallId) {
         return jsonResponse({ ok: false, error: 'Please select a Hall for this user.' }, 400);
+      }
+
+      if (targetHallId) {
+        const { data: hallRow, error: hallErr } = await adminClient
+          .from('halls')
+          .select('id')
+          .eq('id', targetHallId)
+          .maybeSingle();
+        if (hallErr || !hallRow) {
+          return jsonResponse({ ok: false, error: 'Selected hall does not exist.' }, 400);
+        }
       }
 
       const desiredMatrix = normalizePermissionsInput(payload.permissions, requestedRole);
@@ -337,6 +390,7 @@ Deno.serve(async (req) => {
         .single();
 
       if (upsertErr) {
+        await adminClient.auth.admin.deleteUser(created.user.id);
         return jsonResponse({ ok: false, error: upsertErr.message }, 400);
       }
 
@@ -358,6 +412,7 @@ Deno.serve(async (req) => {
         .select('*');
 
       if (permSaveErr) {
+        await adminClient.auth.admin.deleteUser(created.user.id);
         return jsonResponse({ ok: false, error: permSaveErr.message }, 400);
       }
 
@@ -373,12 +428,14 @@ Deno.serve(async (req) => {
         changes: {
           event: 'user_created_with_permissions',
           target_role: requestedRole,
-          granted_screens: permRows.filter((r) => r.can_view || r.can_edit || r.can_delete).map((r) => ({
-            screen_key: r.screen_key,
-            view: r.can_view,
-            edit: r.can_edit,
-            delete: r.can_delete,
-          })),
+          granted_screens: permRows
+            .filter((r) => r.can_view || r.can_edit || r.can_delete)
+            .map((r) => ({
+              screen_key: r.screen_key,
+              view: r.can_view,
+              edit: r.can_edit,
+              delete: r.can_delete,
+            })),
         },
       });
 
@@ -401,10 +458,12 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'Target user profile not found.' }, 404);
     }
 
+    const isSelfTarget = targetUserId === callerProfile.id;
+
     if (callerRole === 'admin') {
-      if (targetUserId === callerProfile.id) {
+      if (isSelfTarget) {
         return jsonResponse(
-          { ok: false, error: 'Hall Admin cannot modify their own permissions or account role.' },
+          { ok: false, error: 'Hall Admin cannot modify their own account, role, hall, or permissions.' },
           403
         );
       }
@@ -431,8 +490,8 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'toggle_active') {
-      if (targetUserId === callerProfile.id) {
-        return jsonResponse({ ok: false, error: 'You cannot deactivate your own active account.' }, 400);
+      if (isSelfTarget) {
+        return jsonResponse({ ok: false, error: 'Users cannot change their own active status.' }, 403);
       }
       const nextActive = Boolean(payload.is_active);
       const { data: updated, error: actErr } = await adminClient
@@ -448,22 +507,66 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'update_user' || action === 'update_permissions') {
-      if (callerRole === 'admin' && payload.role && payload.role !== 'manager') {
-        return jsonResponse({ ok: false, error: 'Hall Admin cannot promote users above Manager.' }, 403);
+      if (isSelfTarget) {
+        if (action === 'update_permissions' || (payload.permissions && payload.permissions.length > 0)) {
+          return jsonResponse({ ok: false, error: 'Users cannot modify their own permissions.' }, 403);
+        }
+        if (payload.role !== undefined && payload.role !== targetProfile.role) {
+          return jsonResponse({ ok: false, error: 'Users cannot change their own role.' }, 403);
+        }
+        if (payload.hall_id !== undefined && payload.hall_id !== targetProfile.hall_id) {
+          return jsonResponse({ ok: false, error: 'Users cannot change their own hall assignment.' }, 403);
+        }
+        if (payload.is_active !== undefined && Boolean(payload.is_active) !== Boolean(targetProfile.is_active)) {
+          return jsonResponse({ ok: false, error: 'Users cannot change their own active status.' }, 403);
+        }
       }
-      if (callerRole === 'admin' && payload.hall_id && payload.hall_id !== callerProfile.hall_id) {
-        return jsonResponse({ ok: false, error: 'Hall Admin cannot move users to another hall.' }, 403);
+
+      if (payload.role !== undefined && !['super_admin', 'admin', 'manager'].includes(payload.role)) {
+        return jsonResponse({ ok: false, error: 'Invalid role specified.' }, 400);
+      }
+
+      if (callerRole === 'admin') {
+        if (payload.role !== undefined && payload.role !== 'manager') {
+          return jsonResponse({ ok: false, error: 'Hall Admin cannot promote users above Manager.' }, 403);
+        }
+        if (payload.hall_id !== undefined && payload.hall_id !== callerProfile.hall_id) {
+          return jsonResponse({ ok: false, error: 'Hall Admin cannot move users to another hall.' }, 403);
+        }
+      }
+
+      const nextRole = callerRole === 'super_admin' ? ((payload.role ?? targetProfile.role) as UserRole) : (targetProfile.role as UserRole);
+      const nextHallIdCandidate =
+        callerRole === 'super_admin'
+          ? nextRole === 'super_admin'
+            ? null
+            : payload.hall_id !== undefined
+              ? payload.hall_id
+              : targetProfile.hall_id
+          : targetProfile.hall_id;
+
+      if (nextRole !== 'super_admin' && !nextHallIdCandidate) {
+        return jsonResponse({ ok: false, error: 'Assigned hall is required for Admin and Manager accounts.' }, 400);
+      }
+
+      let desiredMatrix: Record<ScreenKey, PermissionEntryInput> | null = null;
+      if (payload.permissions && payload.permissions.length > 0) {
+        desiredMatrix = normalizePermissionsInput(payload.permissions, nextRole);
+        const delegationErr = validateAdminDelegation(desiredMatrix);
+        if (delegationErr) {
+          return jsonResponse({ ok: false, error: delegationErr }, 403);
+        }
       }
 
       const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if (payload.full_name !== undefined) patch.full_name = payload.full_name.trim();
       if (payload.phone !== undefined) patch.phone = payload.phone.trim();
-      if (payload.is_active !== undefined && targetUserId !== callerProfile.id) {
-        patch.is_active = payload.is_active;
+      if (payload.is_active !== undefined && !isSelfTarget) {
+        patch.is_active = Boolean(payload.is_active);
       }
-      if (callerRole === 'super_admin') {
-        if (payload.role !== undefined) patch.role = payload.role;
-        if (payload.hall_id !== undefined) patch.hall_id = payload.hall_id;
+      if (callerRole === 'super_admin' && !isSelfTarget) {
+        if (payload.role !== undefined) patch.role = nextRole;
+        if (payload.hall_id !== undefined || nextRole === 'super_admin') patch.hall_id = nextHallIdCandidate;
       }
 
       const { data: updated, error: updErr } = await adminClient
@@ -477,17 +580,10 @@ Deno.serve(async (req) => {
       }
 
       let savedPermissions: unknown[] | undefined = undefined;
-      if (payload.permissions && payload.permissions.length > 0) {
-        const nextRole = (updated.role || targetProfile.role) as UserRole;
+      if (desiredMatrix) {
         const nextHallId = (updated.hall_id || targetProfile.hall_id || DEFAULT_FALLBACK_HALL_ID) as string;
-        const desiredMatrix = normalizePermissionsInput(payload.permissions, nextRole);
 
-        const delegationErr = validateAdminDelegation(desiredMatrix);
-        if (delegationErr) {
-          return jsonResponse({ ok: false, error: delegationErr }, 403);
-        }
-
-        // Load old permissions for diff audit log
+        // Load old permissions for diff audit log (no synthetic defaults for non-super_admin)
         const oldHallId = (targetProfile.hall_id || nextHallId) as string;
         const { data: oldRows } = await adminClient
           .from('user_permissions')
@@ -495,10 +591,10 @@ Deno.serve(async (req) => {
           .eq('user_id', targetUserId)
           .eq('hall_id', oldHallId);
 
-        const oldMatrix =
-          oldRows && oldRows.length > 0
-            ? normalizePermissionsInput(oldRows as PermissionEntryInput[], targetProfile.role as UserRole)
-            : getDefaultPermissionsForRole(targetProfile.role as UserRole);
+        const oldMatrix = normalizeDbPermissionRows(
+          oldRows as PermissionEntryInput[] | null,
+          targetProfile.role as UserRole
+        );
 
         const changedScreens: Array<{
           screen_key: string;
@@ -522,7 +618,6 @@ Deno.serve(async (req) => {
           }
         }
 
-        // If hall changed, clear old hall permissions so user only carries current hall rows
         if (targetProfile.hall_id && targetProfile.hall_id !== nextHallId) {
           await adminClient
             .from('user_permissions')
@@ -536,9 +631,9 @@ Deno.serve(async (req) => {
           user_id: targetUserId,
           hall_id: nextHallId,
           screen_key: key,
-          can_view: desiredMatrix[key].can_view,
-          can_edit: desiredMatrix[key].can_edit,
-          can_delete: desiredMatrix[key].can_delete,
+          can_view: desiredMatrix![key].can_view,
+          can_edit: desiredMatrix![key].can_edit,
+          can_delete: desiredMatrix![key].can_delete,
           updated_at: nowIso,
         }));
 

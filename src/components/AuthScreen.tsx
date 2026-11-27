@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
-import { AlertTriangle, Check, Copy, Globe, KeyRound, Lock, LogOut, Mail, Moon, RefreshCw, ShieldCheck, Sun, Users, Wallet } from 'lucide-react';
+import { Check, Copy, Globe, KeyRound, Lock, LogOut, Mail, Moon, RefreshCw, Sun } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { HALL_LOGO_SRC } from '../data/seedData';
 import { tr } from '../i18n/translations';
-import { supabaseEnvStatus } from '../lib/supabase';
-import { UserRole } from '../types';
+import { isSupabaseConfigured } from '../lib/supabase';
 
 export const AuthScreen: React.FC = () => {
   const {
@@ -13,24 +12,34 @@ export const AuthScreen: React.FC = () => {
     theme,
     toggleTheme,
     signInWithEmail,
-    signInDemoRole,
     signOut,
     retryProfileCheck,
-    supabaseLive,
     authError,
     missingProfileInfo,
     clearAuthError,
     loading,
   } = useApp();
-  const [email, setEmail] = useState('superadmin@marquee1.pk');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [copiedSql, setCopiedSql] = useState(false);
 
+  if (!isSupabaseConfigured) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-slate-100 dark:bg-[#060913] text-slate-900 dark:text-slate-100">
+        <div className="max-w-md w-full rounded-2xl border border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-6 text-center shadow-lg">
+          <p className="text-sm font-medium">
+            App is not configured. Please contact the administrator.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const visibleError = authError || error;
 
   const missingProfileSql = missingProfileInfo
-    ? `INSERT INTO public.profiles (id, hall_id, full_name, email, phone, role, is_active)\nVALUES ('${missingProfileInfo.uid}', '11111111-1111-4111-8111-111111111101', '${(missingProfileInfo.email.split('@')[0] || 'Super Admin').replace(/'/g, "''")}', '${missingProfileInfo.email.replace(/'/g, "''")}', '', 'super_admin', true)\nON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role, is_active = true;`
+    ? `INSERT INTO public.profiles (id, hall_id, full_name, email, phone, role, is_active)\nVALUES ('${missingProfileInfo.uid}', '11111111-1111-4111-8111-111111111101', '${(missingProfileInfo.email.split('@')[0] || 'Staff').replace(/'/g, "''")}', '${missingProfileInfo.email.replace(/'/g, "''")}', '', 'super_admin', true)\nON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role, is_active = true;`
     : '';
 
   const handleCopySql = async () => {
@@ -48,42 +57,18 @@ export const AuthScreen: React.FC = () => {
     e.preventDefault();
     setError(null);
     clearAuthError();
+    if (!email.trim() || !password) {
+      setError('Email and password are required.');
+      return;
+    }
     const res = await signInWithEmail(email, password);
     if (!res.ok) {
       setError(res.error || 'Sign in failed');
     }
   };
 
-  const quickRoles: Array<{ role: UserRole; label: string; labelUr: string; desc: string; icon: React.ReactNode; accent: string }> = [
-    {
-      role: 'super_admin',
-      label: 'Super Admin',
-      labelUr: 'سپر ایڈمن',
-      desc: 'Full multi-hall control, hall switcher, all users, settings, recycle bin & audit log',
-      icon: <ShieldCheck className="w-4 h-4 text-amber-400" />,
-      accent: 'hover:border-amber-500/50',
-    },
-    {
-      role: 'admin',
-      label: 'Hall Admin',
-      labelUr: 'ہال ایڈمن',
-      desc: 'Own hall full access: expenses, staff & payroll, approvals, daily closing reconciliation, reports & managers',
-      icon: <Wallet className="w-4 h-4 text-violet-400" />,
-      accent: 'hover:border-violet-500/50',
-    },
-    {
-      role: 'manager',
-      label: 'Hall Manager',
-      labelUr: 'ہال مینیجر',
-      desc: 'Own hall operations: bookings, calendar, customers, payments, crates, attendance & daily cash closing',
-      icon: <Users className="w-4 h-4 text-cyan-400" />,
-      accent: 'hover:border-cyan-500/50',
-    },
-  ];
-
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-slate-100 dark:bg-[#060913] relative overflow-hidden transition-colors">
-      {/* Subtle ambient glows */}
       <div className="pointer-events-none absolute -top-40 -left-40 w-96 h-96 rounded-full bg-cyan-500/10 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-40 -right-40 w-96 h-96 rounded-full bg-violet-500/10 blur-3xl" />
 
@@ -131,29 +116,8 @@ export const AuthScreen: React.FC = () => {
 
         <h2 className="text-lg font-semibold text-slate-100 mb-1">{tr('loginTitle', lang)}</h2>
         <p className="text-xs text-slate-400 mb-4">
-          {supabaseLive
-            ? 'Sign in with your Supabase Auth staff credentials.'
-            : 'Local Preview Mode is active below so you can still evaluate roles offline.'}
+          Sign in with your Supabase Auth staff email and password.
         </p>
-
-        {supabaseEnvStatus.isMissing && (
-          <div
-            role="alert"
-            className="mb-4 p-3.5 rounded-xl border border-amber-500/45 bg-amber-500/10 text-xs space-y-1.5"
-          >
-            <div className="flex items-center gap-2 font-semibold text-amber-300">
-              <AlertTriangle className="w-4 h-4 shrink-0" />
-              <span>Supabase environment variables are missing</span>
-            </div>
-            <p className="text-slate-300 leading-relaxed">
-              {!supabaseEnvStatus.hasUrl && !supabaseEnvStatus.hasKey
-                ? 'Both Supabase URL and API key are missing or set to placeholder values.'
-                : !supabaseEnvStatus.hasUrl
-                  ? 'Supabase URL is missing (set VITE_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL).'
-                  : 'Supabase key is missing (set VITE_SUPABASE_ANON_KEY, VITE_SUPABASE_PUBLISHABLE_KEY, NEXT_PUBLIC_SUPABASE_ANON_KEY, or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY).'}
-            </p>
-          </div>
-        )}
 
         {visibleError && (
           <div
@@ -212,6 +176,7 @@ export const AuthScreen: React.FC = () => {
               <input
                 type="email"
                 required
+                autoComplete="email"
                 value={email}
                 onChange={(e) => {
                   setEmail(e.target.value);
@@ -221,7 +186,7 @@ export const AuthScreen: React.FC = () => {
                   }
                 }}
                 className="w-full bg-slate-950/70 border border-slate-800 rounded-xl py-2.5 pl-10 pr-3 rtl:pl-3 rtl:pr-10 text-sm text-slate-100 focus:outline-none focus:border-cyan-500"
-                placeholder="admin@marquee1.pk"
+                placeholder="staff@marquee1.pk"
               />
             </div>
           </div>
@@ -232,7 +197,8 @@ export const AuthScreen: React.FC = () => {
               <Lock className="w-4 h-4 text-slate-400 absolute top-3 left-3 rtl:left-auto rtl:right-3" />
               <input
                 type="password"
-                required={supabaseLive}
+                required
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => {
                   setPassword(e.target.value);
@@ -242,7 +208,7 @@ export const AuthScreen: React.FC = () => {
                   }
                 }}
                 className="w-full bg-slate-950/70 border border-slate-800 rounded-xl py-2.5 pl-10 pr-3 rtl:pl-3 rtl:pr-10 text-sm text-slate-100 focus:outline-none focus:border-cyan-500"
-                placeholder={supabaseLive ? '••••••••' : 'Optional in Preview Mode'}
+                placeholder="••••••••"
               />
             </div>
           </div>
@@ -256,32 +222,6 @@ export const AuthScreen: React.FC = () => {
             <span>{loading ? 'Signing in...' : tr('loginTitle', lang)}</span>
           </button>
         </form>
-
-        {!supabaseLive && (
-          <div className="mt-6 pt-5 border-t border-slate-800/80">
-            <p className="text-xs text-slate-400 mb-3">
-              {lang === 'ur' ? 'فوری ڈیمو رسائی (کردار منتخب کریں):' : 'Quick Role Access (Preview Mode):'}
-            </p>
-            <div className="space-y-2">
-              {quickRoles.map((item) => (
-                <button
-                  key={item.role}
-                  type="button"
-                  onClick={() => signInDemoRole(item.role)}
-                  className={`w-full text-start p-3 rounded-xl border border-slate-800 bg-slate-900/60 ${item.accent} transition-colors flex items-start gap-3`}
-                >
-                  <div className="mt-0.5 shrink-0">{item.icon}</div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-semibold text-slate-100">
-                      {lang === 'ur' ? item.labelUr : item.label}
-                    </div>
-                    <div className="text-[11px] text-slate-400 mt-0.5 leading-snug">{item.desc}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

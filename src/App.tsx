@@ -22,6 +22,8 @@ import { SettingsView } from './components/SettingsView';
 import { UsersView } from './components/UsersView';
 import { Booking } from './types';
 
+import { isSupabaseConfigured } from './lib/supabase';
+
 const TAB_ORDER: NavTabId[] = [
   'dashboard',
   'calendar',
@@ -46,7 +48,7 @@ const TAB_ORDER: NavTabId[] = [
 ];
 
 const MainShell: React.FC = () => {
-  const { currentUser, can, errorMsg, clearError, loading } = useApp();
+  const { currentUser, can, errorMsg, clearError, loading, authInitializing } = useApp();
   const [activeTab, setActiveTab] = useState<NavTabId>('dashboard');
   const [editingBooking, setEditingBooking] = useState<Booking | null | undefined>(undefined);
   const [newBookingInitialDate, setNewBookingInitialDate] = useState<string | undefined>(undefined);
@@ -67,6 +69,26 @@ const MainShell: React.FC = () => {
       setActiveTab(firstPermittedTab);
     }
   }, [currentUser, activeTab, can, firstPermittedTab]);
+
+  if (!isSupabaseConfigured) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-slate-100 dark:bg-[#060913] text-slate-900 dark:text-slate-100">
+        <div className="max-w-md w-full rounded-2xl border border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-6 text-center shadow-lg">
+          <p className="text-sm font-medium">
+            App is not configured. Please contact the administrator.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (authInitializing) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-slate-100 dark:bg-[#060913] text-slate-700 dark:text-slate-300">
+        <div className="text-sm font-medium">Verifying session...</div>
+      </div>
+    );
+  }
 
   if (!currentUser) {
     return <AuthScreen />;

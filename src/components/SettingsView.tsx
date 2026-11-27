@@ -30,14 +30,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     themePreferenceSource,
     setTheme,
     resetThemeToSystem,
-    supabaseLive,
     saveHall,
     updateSettings,
     saveChargeCategory,
     saveChargeItem,
     softDeleteChargeItem,
     saveEventType,
-    resetDemoDatabase,
   } = useApp();
 
   const isSuperAdmin = currentUser?.role === 'super_admin';
@@ -1190,16 +1188,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <FileSpreadsheet className="w-4 h-4" />
               <span>Download Full Backup (Excel .xlsx)</span>
             </button>
-            {!supabaseLive && (
-              <button
-                type="button"
-                onClick={resetDemoDatabase}
-                className="px-4 py-2.5 rounded-xl border border-slate-700 bg-slate-900 text-slate-300 text-xs font-semibold flex items-center gap-2 hover:border-rose-500/40 hover:text-rose-300"
-              >
-                <RotateCcw className="w-4 h-4" />
-                <span>Reset Seed Data (Preview)</span>
-              </button>
-            )}
           </div>
         </div>
       )}

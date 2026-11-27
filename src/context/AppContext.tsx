@@ -36,7 +36,12 @@ import {
   UserProfile,
   UserRole,
 } from '../types';
-import { createDefaultHallSettings, createSeedDatabase, DEFAULT_HALL_ID } from '../data/seedData';
+import {
+  createDefaultHallSettings,
+  createEmptyDatabase,
+  createNewHallCatalogTemplates,
+  DEFAULT_HALL_ID,
+} from '../data/seedData';
 import { isSupabaseConfigured, supabase, supabaseAnonKey, supabaseUrl } from '../lib/supabase';
 import {
   calculateBookingFinancials,
@@ -48,15 +53,11 @@ import {
 import {
   PERMISSION_SCREEN_KEYS,
   PermissionMatrixMap,
-  diffPermissionMatrices,
   getDefaultPermissionsForRole,
   hasMatrixPermission,
   toPermissionMatrix,
 } from '../utils/permissions';
 
-const STORAGE_KEY = 'marquee1_hms_db_v2';
-const LEGACY_STORAGE_KEY = 'marquee1_hms_db_v1';
-const USER_STORAGE_KEY = 'marquee1_hms_active_user_v1';
 const THEME_STORAGE_KEY = 'marquee1_hms_theme_v1';
 const ACTIVE_HALL_STORAGE_KEY = 'marquee1_hms_active_hall_v1';
 
@@ -169,10 +170,10 @@ interface AppContextValue {
   theme: ThemeMode;
   themePreferenceSource: 'system' | 'saved';
   loading: boolean;
+  authInitializing: boolean;
   errorMsg: string | null;
   authError: string | null;
   missingProfileInfo: { uid: string; email: string } | null;
-  supabaseLive: boolean;
   setLang: (lang: Language) => void;
   toggleLang: () => void;
   setTheme: (theme: ThemeMode) => void;
@@ -182,7 +183,6 @@ interface AppContextValue {
   clearAuthError: () => void;
   retryProfileCheck: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
-  signInDemoRole: (role: UserRole) => void;
   signOut: () => Promise<void>;
   // Halls (super_admin)
   saveHall: (hall: Omit<Hall, 'id' | 'created_at' | 'updated_at'> & { id?: string }) => Promise<{ ok: boolean; error?: string; hall?: Hall }>;
@@ -267,88 +267,14 @@ interface AppContextValue {
   manageUserWithEdgeFunction: (payload: ManageUserActionPayload) => Promise<{ ok: boolean; error?: string; profile?: UserProfile }>;
   updateSettings: (next: HallSettings) => Promise<void>;
   importBookingsBatch: (rows: Array<Partial<Booking>>) => Promise<{ imported: number; skipped: number; errors: string[] }>;
-  resetDemoDatabase: () => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [rawDb, setRawDb] = useState<AppDatabase>(() => {
-    const seed = createSeedDatabase();
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Partial<AppDatabase>;
-        const stampHall = <T extends { hall_id?: string }>(arr: T[] | undefined, fallback: T[]): (T & { hall_id: string })[] =>
-          (Array.isArray(arr) ? arr : fallback).map((item) => ({
-            ...item,
-            hall_id: item.hall_id || DEFAULT_HALL_ID,
-          }));
+  const [rawDb, setRawDb] = useState<AppDatabase>(() => createEmptyDatabase());
 
-        const halls = Array.isArray(parsed.halls) && parsed.halls.length > 0 ? parsed.halls : seed.halls;
-        const parsedHallSettings: HallSettings[] = Array.isArray(parsed.hallSettings) && parsed.hallSettings.length > 0
-          ? parsed.hallSettings
-          : [
-              {
-                ...seed.settings,
-                ...(parsed.settings || {}),
-                hall_id: parsed.settings?.hall_id || DEFAULT_HALL_ID,
-                weekday_weekend_rates: {
-                  ...seed.settings.weekday_weekend_rates,
-                  ...(parsed.settings?.weekday_weekend_rates || {}),
-                },
-                rent_seasons: Array.isArray(parsed.settings?.rent_seasons)
-                  ? parsed.settings.rent_seasons
-                  : seed.settings.rent_seasons,
-              },
-            ];
-
-        return {
-          ...seed,
-          ...parsed,
-          halls,
-          hallSettings: parsedHallSettings,
-          settings: parsedHallSettings[0] || seed.settings,
-          profiles: Array.isArray(parsed.profiles) ? parsed.profiles.map(hydrateProfile) : seed.profiles,
-          userPermissions: Array.isArray(parsed.userPermissions) ? parsed.userPermissions : seed.userPermissions,
-          customers: stampHall(parsed.customers, seed.customers),
-          eventTypes: stampHall(parsed.eventTypes, seed.eventTypes),
-          chargeCategories: stampHall(parsed.chargeCategories, seed.chargeCategories),
-          chargesCatalog: stampHall(parsed.chargesCatalog, seed.chargesCatalog),
-          bookings: (parsed.bookings || seed.bookings).map(hydrateBooking),
-          invoices: stampHall(parsed.invoices, seed.invoices),
-          bookingItems: stampHall(parsed.bookingItems, seed.bookingItems),
-          installments: stampHall(parsed.installments, seed.installments),
-          payments: stampHall(parsed.payments, seed.payments),
-          expenseCategories: stampHall(parsed.expenseCategories, seed.expenseCategories),
-          employees: stampHall(parsed.employees, seed.employees),
-          attendance: stampHall(parsed.attendance, seed.attendance),
-          advances: stampHall(parsed.advances, seed.advances),
-          expenses: stampHall(parsed.expenses, seed.expenses),
-          dailyClosings: stampHall(parsed.dailyClosings, seed.dailyClosings),
-          approvalRequests: stampHall(parsed.approvalRequests, seed.approvalRequests),
-          auditLogs: stampHall(parsed.auditLogs, seed.auditLogs),
-          perHallSequences: parsed.perHallSequences || {
-            [DEFAULT_HALL_ID]: parsed.sequences || seed.sequences,
-          },
-          sequences: parsed.sequences || seed.sequences,
-        };
-      }
-    } catch {
-      // ignore storage errors
-    }
-    return seed;
-  });
-
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
-    try {
-      const raw = localStorage.getItem(USER_STORAGE_KEY);
-      if (raw) return hydrateProfile(JSON.parse(raw) as UserProfile);
-    } catch {
-      // ignore
-    }
-    return null;
-  });
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
 
   const [selectedHallId, setSelectedHallId] = useState<string>(() => {
     try {
@@ -456,14 +382,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const getPermissionsForUser = (userId: string): ScreenPermissionEntry[] => {
     const profile = rawDb.profiles.find((p) => p.id === userId);
-    const fallbackRole = profile?.role || 'manager';
-    if (fallbackRole === 'super_admin') {
+    if (profile?.role === 'super_admin') {
       return getDefaultPermissionsForRole('super_admin');
     }
     const rows = rawDb.userPermissions.filter(
       (up) => up.user_id === userId && (!profile?.hall_id || up.hall_id === profile.hall_id)
     );
-    const matrix = toPermissionMatrix(rows, fallbackRole);
+    const matrix = toPermissionMatrix(rows, profile?.role);
     return PERMISSION_SCREEN_KEYS.map((k) => matrix[k]);
   };
 
@@ -501,6 +426,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return getSavedBrowserTheme() || getSystemTheme();
   });
   const [loading, setLoading] = useState<boolean>(false);
+  const [authInitializing, setAuthInitializing] = useState<boolean>(() => isSupabaseConfigured);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [missingProfileInfo, setMissingProfileInfo] = useState<{ uid: string; email: string } | null>(null);
@@ -529,16 +455,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     mq.addEventListener('change', onChange);
     return () => mq.removeEventListener('change', onChange);
   }, [themePreferenceSource]);
-
-  useEffect(() => {
-    if (!isSupabaseConfigured) {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(rawDb));
-      } catch {
-        // ignore quota errors
-      }
-    }
-  }, [rawDb]);
 
   const fetchLiveSupabaseData = async (
     uid: string,
@@ -570,28 +486,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return { ok: false, error: msg };
         }
 
-        let profileRow = profileRes.data ? hydrateProfile(profileRes.data as UserProfile) : null;
-
-        if (!profileRow) {
-          const fallbackName = (authEmail || 'Super Admin').split('@')[0] || 'Super Admin';
-          const bootstrapRes = await supabase
-            .from('profiles')
-            .insert({
-              id: uid,
-              hall_id: DEFAULT_HALL_ID,
-              full_name: fallbackName,
-              email: authEmail || `${uid}@marquee1.pk`,
-              phone: '',
-              role: 'super_admin',
-              is_active: true,
-            })
-            .select('*')
-            .maybeSingle();
-
-          if (!bootstrapRes.error && bootstrapRes.data) {
-            profileRow = hydrateProfile(bootstrapRes.data as UserProfile);
-          }
-        }
+        const profileRow = profileRes.data ? hydrateProfile(profileRes.data as UserProfile) : null;
 
         if (!profileRow) {
           const msg = `Signed in (${authEmail || uid}), but no profile/role row was found in public.profiles. Run the SQL snippet below in Supabase SQL Editor or ask your Super Admin to add your profile and role.`;
@@ -674,39 +569,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ]);
 
         setRawDb((prev) => {
-          const nextHalls = hallsRes.data && hallsRes.data.length > 0 ? (hallsRes.data as Hall[]) : prev.halls;
-          const nextHallSettings =
-            settingsRes.data && settingsRes.data.length > 0
-              ? (settingsRes.data as HallSettings[])
-              : prev.hallSettings;
+          const nextHalls = hallsRes.data ? (hallsRes.data as Hall[]) : [];
+          const nextHallSettings = settingsRes.data ? (settingsRes.data as HallSettings[]) : [];
           return {
             ...prev,
             halls: nextHalls,
             hallSettings: nextHallSettings,
-            settings: nextHallSettings[0] || prev.settings,
+            settings: nextHallSettings[0] || createDefaultHallSettings(profileRow.hall_id || DEFAULT_HALL_ID),
             profiles: profilesAllRes.data
               ? (profilesAllRes.data as UserProfile[]).map(hydrateProfile)
-              : prev.profiles,
-            userPermissions: userPermsRes.data
-              ? (userPermsRes.data as UserPermission[])
-              : prev.userPermissions,
-            customers: (customersRes.data as Customer[]) || prev.customers,
-            eventTypes: (eventTypesRes.data as EventTypeItem[]) || prev.eventTypes,
-            chargeCategories: (chargeCatsRes.data as ChargeCategory[]) || prev.chargeCategories,
-            chargesCatalog: (chargesRes.data as ChargeCatalogItem[]) || prev.chargesCatalog,
-            bookings: bookingsRes.data ? (bookingsRes.data as Booking[]).map(hydrateBooking) : prev.bookings,
-            invoices: (invoicesRes.data as InvoiceRecord[]) || prev.invoices,
-            bookingItems: (itemsRes.data as BookingItem[]) || prev.bookingItems,
-            installments: (installmentsRes.data as InstallmentSchedule[]) || prev.installments,
-            payments: (paymentsRes.data as Payment[]) || prev.payments,
-            expenseCategories: (expCatsRes.data as ExpenseCategory[]) || prev.expenseCategories,
-            employees: (employeesRes.data as Employee[]) || prev.employees,
-            attendance: (attendanceRes.data as EmployeeAttendance[]) || prev.attendance,
-            advances: (advancesRes.data as EmployeeAdvance[]) || prev.advances,
-            expenses: (expensesRes.data as Expense[]) || prev.expenses,
-            dailyClosings: (closingsRes.data as DailyClosing[]) || prev.dailyClosings,
-            approvalRequests: (approvalsRes.data as ApprovalRequest[]) || prev.approvalRequests,
-            auditLogs: (auditRes.data as AuditLog[]) || prev.auditLogs,
+              : [profileRow],
+            userPermissions: userPermsRes.data ? (userPermsRes.data as UserPermission[]) : [],
+            customers: (customersRes.data as Customer[]) || [],
+            eventTypes: (eventTypesRes.data as EventTypeItem[]) || [],
+            chargeCategories: (chargeCatsRes.data as ChargeCategory[]) || [],
+            chargesCatalog: (chargesRes.data as ChargeCatalogItem[]) || [],
+            bookings: bookingsRes.data ? (bookingsRes.data as Booking[]).map(hydrateBooking) : [],
+            invoices: (invoicesRes.data as InvoiceRecord[]) || [],
+            bookingItems: (itemsRes.data as BookingItem[]) || [],
+            installments: (installmentsRes.data as InstallmentSchedule[]) || [],
+            payments: (paymentsRes.data as Payment[]) || [],
+            expenseCategories: (expCatsRes.data as ExpenseCategory[]) || [],
+            employees: (employeesRes.data as Employee[]) || [],
+            attendance: (attendanceRes.data as EmployeeAttendance[]) || [],
+            advances: (advancesRes.data as EmployeeAdvance[]) || [],
+            expenses: (expensesRes.data as Expense[]) || [],
+            dailyClosings: (closingsRes.data as DailyClosing[]) || [],
+            approvalRequests: (approvalsRes.data as ApprovalRequest[]) || [],
+            auditLogs: (auditRes.data as AuditLog[]) || [],
           };
         });
         return { ok: true };
@@ -728,23 +618,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   useEffect(() => {
-    if (!isSupabaseConfigured || !supabase) return;
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (error) {
-        console.error('[Auth] Session restore error:', error.message);
-      }
-      if (data.session?.user) {
-        fetchLiveSupabaseData(data.session.user.id, data.session.user.email);
-      }
-    });
+    if (!isSupabaseConfigured || !supabase) {
+      setAuthInitializing(false);
+      return;
+    }
+    let mounted = true;
+    supabase.auth
+      .getSession()
+      .then(async ({ data, error }) => {
+        if (error) {
+          console.error('[Auth] Session restore error:', error.message);
+        }
+        if (data.session?.user) {
+          await fetchLiveSupabaseData(data.session.user.id, data.session.user.email);
+        }
+      })
+      .finally(() => {
+        if (mounted) setAuthInitializing(false);
+      });
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION')) {
         fetchLiveSupabaseData(session.user.id, session.user.email);
       } else if (event === 'SIGNED_OUT') {
         setCurrentUser(null);
+        setRawDb(createEmptyDatabase());
       }
     });
-    return () => listener.subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   const setLang = (next: Language) => setLangState(next);
@@ -767,11 +670,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!currentUser) return;
     const updatedUser: UserProfile = { ...currentUser, preferred_theme: nextTheme };
     setCurrentUser(updatedUser);
-    try {
-      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
-    } catch {
-      // ignore
-    }
     setRawDb((prev) => ({
       ...prev,
       profiles: prev.profiles.map((p) => (p.id === updatedUser.id ? { ...p, preferred_theme: nextTheme } : p)),
@@ -840,75 +738,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const signInWithEmail = async (email: string, password: string) => {
     setAuthError(null);
     setMissingProfileInfo(null);
-    if (isSupabaseConfigured && supabase) {
-      setLoading(true);
-      try {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
-        if (error) {
-          console.warn('[Auth] Supabase sign-in failed:', {
-            status: error.status,
-            code: (error as { code?: string }).code,
-            message: error.message,
-          });
-          setAuthError(error.message);
-          return { ok: false, error: error.message };
-        }
-        if (data.user) {
-          const syncRes = await fetchLiveSupabaseData(data.user.id, data.user.email);
-          if (!syncRes.ok) {
-            return { ok: false, error: syncRes.error };
-          }
-        } else {
-          const msg = 'Sign-in did not return an authenticated user session.';
-          console.warn('[Auth] Missing user object after signInWithPassword');
-          setAuthError(msg);
-          return { ok: false, error: msg };
-        }
-        return { ok: true };
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Unexpected sign-in error.';
-        console.warn('[Auth] Supabase sign-in exception:', msg);
-        setAuthError(msg);
-        return { ok: false, error: msg };
-      } finally {
-        setLoading(false);
-      }
-    }
-    const matched = rawDb.profiles.find((p) => p.email.toLowerCase() === email.trim().toLowerCase() && p.is_active);
-    if (!matched) {
-      const msg = 'Account not found or inactive. Use quick role login below.';
+    if (!isSupabaseConfigured || !supabase) {
+      const msg = 'App is not configured. Please contact the administrator.';
       setAuthError(msg);
       return { ok: false, error: msg };
     }
-    setCurrentUser(matched);
-    if (matched.role !== 'super_admin' && matched.hall_id) {
-      setSelectedHallId(matched.hall_id);
+    if (!email.trim() || !password) {
+      const msg = 'Email and password are required.';
+      setAuthError(msg);
+      return { ok: false, error: msg };
     }
-    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(matched));
-    if (matched.preferred_theme === 'light' || matched.preferred_theme === 'dark') {
-      setThemeState(matched.preferred_theme);
-      setThemePreferenceSource('saved');
-      localStorage.setItem(THEME_STORAGE_KEY, matched.preferred_theme);
-    }
-    return { ok: true };
-  };
-
-  const signInDemoRole = (role: UserRole) => {
-    setAuthError(null);
-    setMissingProfileInfo(null);
-    const matched = rawDb.profiles.find((p) => p.role === role && p.is_active) || rawDb.profiles[0];
-    setCurrentUser(matched);
-    if (matched.role !== 'super_admin' && matched.hall_id) {
-      setSelectedHallId(matched.hall_id);
-    }
-    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(matched));
-    if (matched.preferred_theme === 'light' || matched.preferred_theme === 'dark') {
-      setThemeState(matched.preferred_theme);
-      setThemePreferenceSource('saved');
-      localStorage.setItem(THEME_STORAGE_KEY, matched.preferred_theme);
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (error) {
+        console.warn('[Auth] Supabase sign-in failed:', {
+          status: error.status,
+          code: (error as { code?: string }).code,
+          message: error.message,
+        });
+        setAuthError(error.message);
+        return { ok: false, error: error.message };
+      }
+      if (data.user) {
+        const syncRes = await fetchLiveSupabaseData(data.user.id, data.user.email);
+        if (!syncRes.ok) {
+          return { ok: false, error: syncRes.error };
+        }
+      } else {
+        const msg = 'Sign-in did not return an authenticated user session.';
+        console.warn('[Auth] Missing user object after signInWithPassword');
+        setAuthError(msg);
+        return { ok: false, error: msg };
+      }
+      return { ok: true };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unexpected sign-in error.';
+      console.warn('[Auth] Supabase sign-in exception:', msg);
+      setAuthError(msg);
+      return { ok: false, error: msg };
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -919,7 +792,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await supabase.auth.signOut();
     }
     setCurrentUser(null);
-    localStorage.removeItem(USER_STORAGE_KEY);
+    setRawDb(createEmptyDatabase());
   };
 
   // =========================================================================
@@ -970,29 +843,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         invoice_format: `${record.invoice_prefix}-{YYYY}-{0000}`,
       });
 
-      const template = createSeedDatabase();
-      const seededEventTypes: EventTypeItem[] = template.eventTypes.map((et) => ({
-        ...et,
-        id: makeUUID(),
-        hall_id: hallId,
-      }));
-      const catIdMap: Record<string, string> = {};
-      const seededChargeCats: ChargeCategory[] = template.chargeCategories.map((cc) => {
-        const newId = makeUUID();
-        catIdMap[cc.id] = newId;
-        return { ...cc, id: newId, hall_id: hallId };
-      });
-      const seededCharges: ChargeCatalogItem[] = template.chargesCatalog.map((ch) => ({
-        ...ch,
-        id: makeUUID(),
-        hall_id: hallId,
-        category_id: catIdMap[ch.category_id] || seededChargeCats[0]?.id || '',
-      }));
-      const seededExpCats: ExpenseCategory[] = template.expenseCategories.map((ec) => ({
-        ...ec,
-        id: makeUUID(),
-        hall_id: hallId,
-      }));
+      const {
+        eventTypes: seededEventTypes,
+        chargeCategories: seededChargeCats,
+        chargesCatalog: seededCharges,
+        expenseCategories: seededExpCats,
+      } = createNewHallCatalogTemplates(hallId, makeUUID);
 
       if (isSupabaseConfigured && supabase) {
         await supabase.from('hall_sequences').upsert({ hall_id: hallId, booking_seq: 0, invoice_seq: 0, receipt_seq: 0 });
@@ -2226,266 +2082,94 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if ((callerRole !== 'super_admin' && callerRole !== 'admin') || !can('users', 'edit')) {
       return { ok: false, error: 'You do not have permission to create or edit staff accounts.' };
     }
-
-    // Live Supabase mode calls secure Edge Function (SUPABASE_SERVICE_ROLE_KEY stays strictly server-side)
-    if (isSupabaseConfigured && supabase && supabaseUrl && supabaseAnonKey) {
-      try {
-        const { data: sessData } = await supabase.auth.getSession();
-        const accessToken = sessData.session?.access_token;
-        if (!accessToken) {
-          return { ok: false, error: 'Your login session has expired. Please sign in again.' };
-        }
-
-        const resp = await fetch(`${supabaseUrl.replace(/\/$/, '')}/functions/v1/manage-users`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
-            apikey: supabaseAnonKey,
-          },
-          body: JSON.stringify(payload),
-        });
-
-        const body = await resp.json().catch(() => ({}));
-        if (!resp.ok || !body?.ok) {
-          return {
-            ok: false,
-            error:
-              body?.error ||
-              `User service returned HTTP ${resp.status}. Make sure the "manage-users" Supabase Edge Function is deployed.`,
-          };
-        }
-
-        const savedProfile = body.profile ? hydrateProfile(body.profile as UserProfile) : undefined;
-        const returnedPerms = Array.isArray(body.permissions) ? (body.permissions as UserPermission[]) : null;
-        const targetId = savedProfile?.id || payload.userId;
-
-        setRawDb((prev) => {
-          let nextProfiles = prev.profiles;
-          if (savedProfile) {
-            const exists = prev.profiles.some((p) => p.id === savedProfile.id);
-            nextProfiles = exists
-              ? prev.profiles.map((p) => (p.id === savedProfile.id ? savedProfile : p))
-              : [savedProfile, ...prev.profiles];
-          }
-          let nextPerms = prev.userPermissions;
-          if (returnedPerms && targetId) {
-            nextPerms = [
-              ...prev.userPermissions.filter((up) => up.user_id !== targetId),
-              ...returnedPerms,
-            ];
-          }
-          return {
-            ...prev,
-            profiles: nextProfiles,
-            userPermissions: nextPerms,
-          };
-        });
-
-        appendAudit(
-          'USER',
-          'profile',
-          savedProfile?.id || payload.userId || 'user',
-          savedProfile?.email || payload.email || payload.userId || 'User',
-          { action: payload.action, role: payload.role, hall_id: payload.hall_id },
-          savedProfile?.hall_id || activeHallId
-        );
-
-        return { ok: true, profile: savedProfile };
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Network error calling manage-users Edge Function.';
-        return {
-          ok: false,
-          error: `${msg} (Ensure the "manage-users" Supabase Edge Function is deployed.)`,
-        };
-      }
+    if (!isSupabaseConfigured || !supabase || !supabaseUrl || !supabaseAnonKey) {
+      return { ok: false, error: 'App is not configured. Please contact the administrator.' };
     }
-
-    // Local Preview Mode enforcement matching the Edge Function rules
-    if (payload.action === 'create_user') {
-      const email = (payload.email || '').trim().toLowerCase();
-      const fullName = (payload.full_name || '').trim();
-      const requestedRole = payload.role || 'manager';
-      let targetHallId = payload.hall_id ?? activeHallId;
-
-      if (!email || !fullName) {
-        return { ok: false, error: 'Full name and email are required.' };
-      }
-      if (callerRole === 'admin') {
-        if (requestedRole !== 'manager') {
-          return { ok: false, error: 'Hall Admin can only create Manager accounts.' };
-        }
-        targetHallId = currentUser?.hall_id || activeHallId;
-      }
-      if (rawDb.profiles.some((p) => p.email.toLowerCase() === email)) {
-        return { ok: false, error: 'A staff user with this email already exists.' };
-      }
-
-      const desiredPerms = payload.permissions?.length
-        ? payload.permissions
-        : getDefaultPermissionsForRole(requestedRole);
-      const delegationErr = validateAdminDelegation(desiredPerms);
-      if (delegationErr) {
-        return { ok: false, error: delegationErr };
-      }
-
-      const newId = makeUUID();
-      const permHall = requestedRole === 'super_admin' ? activeHallId : targetHallId;
-      const record: UserProfile = {
-        id: newId,
-        hall_id: requestedRole === 'super_admin' ? null : targetHallId,
-        full_name: fullName,
-        email,
-        phone: (payload.phone || '').trim(),
-        role: requestedRole,
-        is_active: true,
-        created_at: new Date().toISOString(),
-      };
-      const permRows: UserPermission[] = desiredPerms.map((p) => ({
-        id: makeUUID(),
-        user_id: newId,
-        hall_id: permHall,
-        screen_key: p.screen_key,
-        can_view: Boolean(p.can_view || p.can_edit || p.can_delete),
-        can_edit: Boolean(p.can_edit),
-        can_delete: Boolean(p.can_delete),
-      }));
-
-      setRawDb((prev) => ({
-        ...prev,
-        profiles: [record, ...prev.profiles],
-        userPermissions: [...prev.userPermissions, ...permRows],
-      }));
-      appendAudit('USER', 'profile', record.id, record.email, { action: 'create_user', role: record.role }, permHall);
-      appendAudit(
-        'PERMISSIONS',
-        'user_permissions',
-        record.id,
-        record.email,
-        {
-          event: 'user_created_with_permissions',
-          target_role: record.role,
-          granted_screens: permRows
-            .filter((r) => r.can_view || r.can_edit || r.can_delete)
-            .map((r) => ({ screen_key: r.screen_key, view: r.can_view, edit: r.can_edit, delete: r.can_delete })),
-        },
-        permHall
-      );
-      return { ok: true, profile: record };
-    }
-
-    const target = rawDb.profiles.find((p) => p.id === payload.userId);
-    if (!target) return { ok: false, error: 'User profile not found.' };
-
     if (callerRole === 'admin') {
-      if (target.id === currentUser?.id) {
-        return { ok: false, error: 'Hall Admin cannot modify their own permissions or account role.' };
+      if (payload.action === 'create_user' && payload.role && payload.role !== 'manager') {
+        return { ok: false, error: 'Hall Admin can only create Manager accounts.' };
       }
-      if (target.role !== 'manager' || target.hall_id !== (currentUser?.hall_id || activeHallId)) {
-        return { ok: false, error: 'Hall Admin can only manage Managers in their own hall.' };
+      if (payload.hall_id && payload.hall_id !== currentUser?.hall_id) {
+        return { ok: false, error: 'Hall Admin can only manage users in their own hall.' };
       }
-    }
-
-    if (payload.action === 'reset_password') {
-      if (!payload.password || payload.password.length < 6) {
-        return { ok: false, error: 'New password must be at least 6 characters.' };
-      }
-      appendAudit('USER', 'profile', target.id, target.email, { action: 'reset_password' }, target.hall_id || activeHallId);
-      return { ok: true, profile: target };
-    }
-
-    if (payload.action === 'toggle_active') {
-      if (target.id === currentUser?.id) {
-        return { ok: false, error: 'You cannot deactivate your own active account.' };
-      }
-      const updated = { ...target, is_active: Boolean(payload.is_active) };
-      setRawDb((prev) => ({
-        ...prev,
-        profiles: prev.profiles.map((p) => (p.id === target.id ? updated : p)),
-      }));
-      appendAudit('USER', 'profile', target.id, target.email, { is_active: updated.is_active }, target.hall_id || activeHallId);
-      return { ok: true, profile: updated };
-    }
-
-    if (payload.action === 'update_user' || payload.action === 'update_permissions') {
-      if (callerRole === 'admin' && payload.role && payload.role !== 'manager') {
-        return { ok: false, error: 'Hall Admin cannot promote a Manager to Admin or Super Admin.' };
-      }
-
       if (payload.permissions && payload.permissions.length > 0) {
         const delegationErr = validateAdminDelegation(payload.permissions);
         if (delegationErr) {
           return { ok: false, error: delegationErr };
         }
       }
-
-      const nextRole = callerRole === 'super_admin' ? payload.role ?? target.role : target.role;
-      const nextHall =
-        callerRole === 'super_admin'
-          ? payload.hall_id !== undefined
-            ? payload.hall_id
-            : target.hall_id
-          : target.hall_id;
-
-      const updated: UserProfile = {
-        ...target,
-        full_name: payload.full_name ?? target.full_name,
-        phone: payload.phone ?? target.phone,
-        is_active: target.id === currentUser?.id ? target.is_active : payload.is_active ?? target.is_active,
-        role: nextRole,
-        hall_id: nextHall,
-      };
-
-      const oldPerms = getPermissionsForUser(target.id);
-      const nextPermHall = nextHall || activeHallId;
-      let nextPermRows: UserPermission[] | null = null;
-      let diffs: ReturnType<typeof diffPermissionMatrices> = [];
-
-      if (payload.permissions && payload.permissions.length > 0) {
-        const normalized = payload.permissions.map((p) => ({
-          screen_key: p.screen_key,
-          can_view: Boolean(p.can_view || p.can_edit || p.can_delete),
-          can_edit: Boolean(p.can_edit),
-          can_delete: Boolean(p.can_delete),
-        }));
-        diffs = diffPermissionMatrices(oldPerms, normalized);
-        nextPermRows = normalized.map((p) => ({
-          id: makeUUID(),
-          user_id: target.id,
-          hall_id: nextPermHall,
-          screen_key: p.screen_key,
-          can_view: p.can_view,
-          can_edit: p.can_edit,
-          can_delete: p.can_delete,
-        }));
-      }
-
-      setRawDb((prev) => ({
-        ...prev,
-        profiles: prev.profiles.map((p) => (p.id === target.id ? updated : p)),
-        userPermissions: nextPermRows
-          ? [...prev.userPermissions.filter((up) => up.user_id !== target.id), ...nextPermRows]
-          : prev.userPermissions,
-      }));
-      if (currentUser?.id === target.id) {
-        setCurrentUser(updated);
-      }
-
-      appendAudit('USER', 'profile', target.id, target.email, { action: payload.action, role: updated.role }, nextPermHall);
-      if (diffs.length > 0) {
-        appendAudit(
-          'PERMISSIONS',
-          'user_permissions',
-          target.id,
-          target.email,
-          { event: 'permissions_updated', target_role: updated.role, changed_screens: diffs },
-          nextPermHall
-        );
-      }
-      return { ok: true, profile: updated };
     }
 
-    return { ok: false, error: 'Unknown action.' };
+    try {
+      const { data: sessData } = await supabase.auth.getSession();
+      const accessToken = sessData.session?.access_token;
+      if (!accessToken) {
+        return { ok: false, error: 'Your login session has expired. Please sign in again.' };
+      }
+
+      const resp = await fetch(`${supabaseUrl.replace(/\/$/, '')}/functions/v1/manage-users`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+          apikey: supabaseAnonKey,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok || !body?.ok) {
+        return {
+          ok: false,
+          error:
+            body?.error ||
+            `User service returned HTTP ${resp.status}. Make sure the "manage-users" Supabase Edge Function is deployed.`,
+        };
+      }
+
+      const savedProfile = body.profile ? hydrateProfile(body.profile as UserProfile) : undefined;
+      const returnedPerms = Array.isArray(body.permissions) ? (body.permissions as UserPermission[]) : null;
+      const targetId = savedProfile?.id || payload.userId;
+
+      setRawDb((prev) => {
+        let nextProfiles = prev.profiles;
+        if (savedProfile) {
+          const exists = prev.profiles.some((p) => p.id === savedProfile.id);
+          nextProfiles = exists
+            ? prev.profiles.map((p) => (p.id === savedProfile.id ? savedProfile : p))
+            : [savedProfile, ...prev.profiles];
+        }
+        let nextPerms = prev.userPermissions;
+        if (returnedPerms && targetId) {
+          nextPerms = [
+            ...prev.userPermissions.filter((up) => up.user_id !== targetId),
+            ...returnedPerms,
+          ];
+        }
+        return {
+          ...prev,
+          profiles: nextProfiles,
+          userPermissions: nextPerms,
+        };
+      });
+
+      appendAudit(
+        'USER',
+        'profile',
+        savedProfile?.id || payload.userId || 'user',
+        savedProfile?.email || payload.email || payload.userId || 'User',
+        { action: payload.action, role: payload.role, hall_id: payload.hall_id },
+        savedProfile?.hall_id || activeHallId
+      );
+
+      return { ok: true, profile: savedProfile };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Network error calling manage-users Edge Function.';
+      return {
+        ok: false,
+        error: `${msg} (Ensure the "manage-users" Supabase Edge Function is deployed.)`,
+      };
+    }
   };
 
   const updateSettings = async (next: HallSettings) => {
@@ -2647,12 +2331,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { imported, skipped, errors };
   };
 
-  const resetDemoDatabase = () => {
-    const fresh = createSeedDatabase();
-    setRawDb(fresh);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(fresh));
-  };
-
   return (
     <AppContext.Provider
       value={{
@@ -2669,10 +2347,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         theme,
         themePreferenceSource,
         loading,
+        authInitializing,
         errorMsg,
         authError,
         missingProfileInfo,
-        supabaseLive: isSupabaseConfigured,
         setLang,
         toggleLang,
         setTheme,
@@ -2682,7 +2360,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         clearAuthError,
         retryProfileCheck,
         signInWithEmail,
-        signInDemoRole,
         signOut,
         saveHall,
         saveCustomer,
@@ -2714,7 +2391,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         manageUserWithEdgeFunction,
         updateSettings,
         importBookingsBatch,
-        resetDemoDatabase,
       }}
     >
       {children}
