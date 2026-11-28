@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { FileText, Printer, Search } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { tr, translateEventType, translateStatus } from '../i18n/translations';
+import { formatBookingEventDisplay, tr, translateStatus } from '../i18n/translations';
 import { Booking } from '../types';
 import { calculateBookingFinancials, formatDateDisplay, formatPKR } from '../utils/formatters';
 
@@ -149,7 +149,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({ onOpenInvoice }) => 
                     <td className="py-3 px-4">
                       <div className="font-semibold text-white">{bk.customer_name}</div>
                       <div className="text-[11px] text-slate-400">
-                        {bk.customer_phone} · {translateEventType(bk.event_type, lang, db.eventTypes)} ·{' '}
+                        {bk.customer_phone} · {formatBookingEventDisplay(bk, lang, db.eventTypes)} ·{' '}
                         {translateStatus(bk.status, lang)}
                       </div>
                     </td>

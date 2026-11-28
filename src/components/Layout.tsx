@@ -56,6 +56,7 @@ export type NavTabId =
   | 'recycle'
   | 'audit'
   | 'users'
+  | 'halls'
   | 'settings';
 
 interface LayoutProps {
@@ -93,6 +94,7 @@ export const TAB_TO_SCREEN_KEY: Record<NavTabId, PermissionScreenKey> = {
   recycle: 'recycle_bin',
   audit: 'audit_log',
   users: 'users',
+  halls: 'halls',
   settings: 'settings',
 };
 
@@ -147,13 +149,27 @@ export const Layout: React.FC<LayoutProps> = ({
       { id: 'recycle', screenKey: 'recycle_bin', labelKey: 'recycleBin', icon: <Trash2 className="w-4 h-4" /> },
       { id: 'audit', screenKey: 'audit_log', labelKey: 'auditLog', icon: <History className="w-4 h-4" /> },
       { id: 'users', screenKey: 'users', labelKey: 'users', icon: <UserCog className="w-4 h-4" /> },
+      { id: 'halls', screenKey: 'halls', labelKey: role === 'super_admin' ? 'halls' : 'hallProfile', icon: <Building2 className="w-4 h-4" /> },
       { id: 'settings', screenKey: 'settings', labelKey: 'settings', icon: <Settings className="w-4 h-4" /> },
     ],
-    []
+    [role]
   );
 
   const permittedNav = useMemo(
-    () => navItems.filter((item) => can(item.screenKey, 'view')),
+    () =>
+      navItems.filter((item) => {
+        if (item.id === 'expenses') {
+          return can('expenses', 'view') || can('expense_categories', 'view');
+        }
+        if (item.id === 'settings') {
+          return (
+            can('settings', 'view') ||
+            can('event_categories', 'view') ||
+            can('catalog', 'view')
+          );
+        }
+        return can(item.screenKey, 'view');
+      }),
     [navItems, can]
   );
 
@@ -193,14 +209,15 @@ export const Layout: React.FC<LayoutProps> = ({
       <aside className="no-print hidden lg:flex lg:flex-col lg:w-64 lg:shrink-0 border-e border-slate-800/80 bg-white/95 dark:bg-[#090E1B]/95 backdrop-blur-xl sticky top-0 h-screen">
         <div className="p-5 border-b border-slate-800/80 flex items-center gap-3">
           <img
-            src={db.settings.logo_url || activeHall.logo_url || HALL_LOGO_SRC}
-            alt={db.settings.hall_name}
+            src={activeHall.logo_url || HALL_LOGO_SRC}
+            alt={activeHall.name}
+            crossOrigin={(activeHall.logo_url || '').startsWith('http') ? 'anonymous' : undefined}
             referrerPolicy="no-referrer"
             className="w-10 h-10 rounded-xl object-cover border border-amber-500/30 shrink-0"
           />
           <div className="min-w-0">
             <div className="font-bold text-sm text-white truncate">
-              {pickLocalized(db.settings.hall_name, db.settings.hall_name_ur, lang)}
+              {pickLocalized(activeHall.name, activeHall.name_ur, lang)}
             </div>
             <div className="text-[11px] text-slate-400 truncate">
               {tr('supabaseLiveBadge', lang)}
@@ -280,8 +297,9 @@ export const Layout: React.FC<LayoutProps> = ({
         <header className="no-print sticky top-0 z-30 border-b border-slate-800/80 bg-white/90 dark:bg-[#060913]/90 backdrop-blur-xl px-4 lg:px-8 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
             <img
-              src={db.settings.logo_url || activeHall.logo_url || HALL_LOGO_SRC}
-              alt="Hall"
+              src={activeHall.logo_url || HALL_LOGO_SRC}
+              alt={activeHall.name}
+              crossOrigin={(activeHall.logo_url || '').startsWith('http') ? 'anonymous' : undefined}
               referrerPolicy="no-referrer"
               className="lg:hidden w-8 h-8 rounded-lg object-cover border border-amber-500/30 shrink-0"
             />

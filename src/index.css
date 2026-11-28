@@ -87,12 +87,12 @@ html.light .neon-border-gold {
   box-shadow: 0 10px 26px -14px rgba(245, 158, 11, 0.24);
 }
 
-/* Scoped Light Mode readability & surface tokens (excludes print sheets & solid CTAs) */
+/* Scoped Light Mode readability & surface tokens (excludes print sheets, save toasts & solid CTAs) */
 html.light :is(
   [class~="text-white"],
   [class~="text-slate-100"],
   [class~="text-slate-200"]
-):not(.print-only-sheet):not(.print-only-sheet *):not(.print-thermal-sheet):not(.print-thermal-sheet *):not([class*="bg-gradient-to-"]):not([class*="bg-rose-600"]):not([class*="bg-rose-600"] *):not([class*="bg-emerald-600"]):not([class*="bg-cyan-600"]):not([class*="bg-violet-600"]) {
+):not(.print-only-sheet):not(.print-only-sheet *):not(.print-thermal-sheet):not(.print-thermal-sheet *):not(.save-toast-root):not(.save-toast-root *):not([class*="bg-gradient-to-"]):not([class*="bg-rose-600"]):not([class*="bg-rose-600"] *):not([class*="bg-emerald-600"]):not([class*="bg-cyan-600"]):not([class*="bg-violet-600"]) {
   color: #0f172a;
 }
 
@@ -100,36 +100,36 @@ html.light :is([class*="bg-gradient-to-"], [class*="bg-rose-600"], [class*="bg-e
   color: #ffffff;
 }
 
-html.light [class~="text-slate-300"]:not(.print-only-sheet):not(.print-only-sheet *):not(.print-thermal-sheet):not(.print-thermal-sheet *) {
+html.light [class~="text-slate-300"]:not(.print-only-sheet):not(.print-only-sheet *):not(.print-thermal-sheet):not(.print-thermal-sheet *):not(.save-toast-root):not(.save-toast-root *) {
   color: #334155;
 }
 
-html.light [class~="text-slate-400"]:not(.print-only-sheet):not(.print-only-sheet *):not(.print-thermal-sheet):not(.print-thermal-sheet *) {
+html.light [class~="text-slate-400"]:not(.print-only-sheet):not(.print-only-sheet *):not(.print-thermal-sheet):not(.print-thermal-sheet *):not(.save-toast-root):not(.save-toast-root *) {
   color: #475569;
 }
 
-html.light [class~="text-slate-500"]:not(.print-only-sheet):not(.print-only-sheet *):not(.print-thermal-sheet):not(.print-thermal-sheet *) {
+html.light [class~="text-slate-500"]:not(.print-only-sheet):not(.print-only-sheet *):not(.print-thermal-sheet):not(.print-thermal-sheet *):not(.save-toast-root):not(.save-toast-root *) {
   color: #64748b;
 }
 
 /* Vibrant yet high-contrast accent ink on light surfaces */
-html.light :is([class~="text-cyan-200"], [class~="text-cyan-300"], [class~="text-cyan-400"]):not(.print-only-sheet):not(.print-only-sheet *) {
+html.light :is([class~="text-cyan-200"], [class~="text-cyan-300"], [class~="text-cyan-400"]):not(.print-only-sheet):not(.print-only-sheet *):not(.save-toast-root):not(.save-toast-root *) {
   color: #0e7490;
 }
 
-html.light :is([class~="text-violet-200"], [class~="text-violet-300"], [class~="text-violet-400"]):not(.print-only-sheet):not(.print-only-sheet *) {
+html.light :is([class~="text-violet-200"], [class~="text-violet-300"], [class~="text-violet-400"]):not(.print-only-sheet):not(.print-only-sheet *):not(.save-toast-root):not(.save-toast-root *) {
   color: #6d28d9;
 }
 
-html.light :is([class~="text-amber-300"], [class~="text-amber-400"], [class~="text-amber-400/90"]):not(.print-only-sheet):not(.print-only-sheet *) {
+html.light :is([class~="text-amber-300"], [class~="text-amber-400"], [class~="text-amber-400/90"]):not(.print-only-sheet):not(.print-only-sheet *):not(.save-toast-root):not(.save-toast-root *) {
   color: #b45309;
 }
 
-html.light :is([class~="text-emerald-300"], [class~="text-emerald-400"]):not(.print-only-sheet):not(.print-only-sheet *) {
+html.light :is([class~="text-emerald-300"], [class~="text-emerald-400"]):not(.print-only-sheet):not(.print-only-sheet *):not(.save-toast-root):not(.save-toast-root *) {
   color: #047857;
 }
 
-html.light :is([class~="text-rose-200"], [class~="text-rose-300"], [class~="text-rose-400"]):not(.print-only-sheet):not(.print-only-sheet *) {
+html.light :is([class~="text-rose-200"], [class~="text-rose-300"], [class~="text-rose-400"]):not(.print-only-sheet):not(.print-only-sheet *):not(.save-toast-root):not(.save-toast-root *) {
   color: #be123c;
 }
 
@@ -142,34 +142,34 @@ html.light :is(
   [class*="bg-slate-900/50"],
   [class*="bg-slate-900/40"],
   [class~="bg-slate-900"]
-):not(.print-only-sheet):not(.print-only-sheet *):not(.print-thermal-sheet):not(.print-thermal-sheet *) {
+):not(.print-only-sheet):not(.print-only-sheet *):not(.print-thermal-sheet):not(.print-thermal-sheet *):not(.save-toast-root):not(.save-toast-root *) {
   background-color: #ffffff;
 }
 
-html.light [class~="bg-slate-900/90"]:not(.print-only-sheet):not(.print-only-sheet *) {
+html.light [class~="bg-slate-900/90"]:not(.print-only-sheet):not(.print-only-sheet *):not(.save-toast-root):not(.save-toast-root *) {
   background-color: #e2e8f0;
 }
 
-html.light :is([class*="bg-slate-800"]):not(.print-only-sheet):not(.print-only-sheet *) {
+html.light :is([class*="bg-slate-800"]):not(.print-only-sheet):not(.print-only-sheet *):not(.save-toast-root):not(.save-toast-root *) {
   background-color: #e2e8f0;
 }
 
-html.light [class*="bg-rose-950"]:not(.print-only-sheet):not(.print-only-sheet *) {
+html.light [class*="bg-rose-950"]:not(.print-only-sheet):not(.print-only-sheet *):not(.save-toast-root):not(.save-toast-root *) {
   background-color: #fff1f2;
 }
 
-html.light [class*="bg-cyan-950"]:not(.print-only-sheet):not(.print-only-sheet *) {
+html.light [class*="bg-cyan-950"]:not(.print-only-sheet):not(.print-only-sheet *):not(.save-toast-root):not(.save-toast-root *) {
   background-color: #ecfeff;
 }
 
-html.light [class*="bg-black/"]:not(.print-only-sheet):not(.print-only-sheet *) {
+html.light [class*="bg-black/"]:not(.print-only-sheet):not(.print-only-sheet *):not(.save-toast-root):not(.save-toast-root *) {
   background-color: rgba(15, 23, 42, 0.45);
 }
 
 html.light :is(
   [class*="border-slate-800"],
   [class*="border-slate-700"]
-):not(.print-only-sheet):not(.print-only-sheet *):not(.print-thermal-sheet):not(.print-thermal-sheet *) {
+):not(.print-only-sheet):not(.print-only-sheet *):not(.print-thermal-sheet):not(.print-thermal-sheet *):not(.save-toast-root):not(.save-toast-root *) {
   border-color: rgba(15, 23, 42, 0.14);
 }
 
@@ -180,7 +180,7 @@ html.light [class*="divide-slate-800"] > :not(:last-child) {
 html.light :is(
   [class*="hover:bg-slate-800"]:hover,
   [class*="hover:bg-slate-900"]:hover
-):not(.print-only-sheet):not(.print-only-sheet *) {
+):not(.print-only-sheet):not(.print-only-sheet *):not(.save-toast-root):not(.save-toast-root *) {
   background-color: #f1f5f9;
 }
 
@@ -188,7 +188,7 @@ html.light :is(
   [class*="hover:text-white"]:hover,
   [class*="hover:text-slate-100"]:hover,
   [class*="hover:text-slate-200"]:hover
-):not(.print-only-sheet):not(.print-only-sheet *):not([class*="bg-gradient-to-"]) {
+):not(.print-only-sheet):not(.print-only-sheet *):not(.save-toast-root):not(.save-toast-root *):not([class*="bg-gradient-to-"]) {
   color: #0f172a;
 }
 

@@ -10,6 +10,7 @@ import { CustomersView } from './components/CustomersView';
 import { DailyClosingView } from './components/DailyClosingView';
 import { DashboardView } from './components/DashboardView';
 import { ExpensesView } from './components/ExpensesView';
+import { HallsView } from './components/HallsView';
 import { ImportView } from './components/ImportView';
 import { InvoiceModal } from './components/InvoiceModal';
 import { InvoicesView } from './components/InvoicesView';
@@ -19,6 +20,7 @@ import { RecycleBinView } from './components/RecycleBinView';
 import { RemindersView } from './components/RemindersView';
 import { ReportsView } from './components/ReportsView';
 import { SettingsView } from './components/SettingsView';
+import { SaveFeedbackToasts } from './components/SaveFeedbackToasts';
 import { UsersView } from './components/UsersView';
 import { tr } from './i18n/translations';
 import { Booking } from './types';
@@ -45,31 +47,109 @@ const TAB_ORDER: NavTabId[] = [
   'recycle',
   'audit',
   'users',
+  'halls',
   'settings',
 ];
 
 const MainShell: React.FC = () => {
-  const { currentUser, can, errorMsg, clearError, loading, authInitializing, lang } = useApp();
+  const {
+    db,
+    rawDb,
+    currentUser,
+    can,
+    errorMsg,
+    clearError,
+    loading,
+    authInitializing,
+    lang,
+    pendingViewTarget,
+    clearPendingViewTarget,
+  } = useApp();
   const [activeTab, setActiveTab] = useState<NavTabId>('dashboard');
   const [editingBooking, setEditingBooking] = useState<Booking | null | undefined>(undefined);
   const [newBookingInitialDate, setNewBookingInitialDate] = useState<string | undefined>(undefined);
   const [invoiceBooking, setInvoiceBooking] = useState<Booking | null>(null);
   const [paymentBookingId, setPaymentBookingId] = useState<string | null>(null);
+  const [requestedSettingsSubTab, setRequestedSettingsSubTab] = useState<
+    { tab: 'hall' | 'pricing' | 'catalog' | 'events' | 'backup'; nonce: number } | undefined
+  >(undefined);
+  const [requestedExpenseSubTab, setRequestedExpenseSubTab] = useState<
+    { tab: 'expenses' | 'staff' | 'attendance' | 'payroll' | 'categories'; nonce: number } | undefined
+  >(undefined);
+
+  const canAccessTab = React.useCallback(
+    (tab: NavTabId): boolean => {
+      if (tab === 'expenses') {
+        return can('expenses', 'view') || can('expense_categories', 'view');
+      }
+      if (tab === 'settings') {
+        return (
+          can('settings', 'view') ||
+          can('event_categories', 'view') ||
+          can('catalog', 'view')
+        );
+      }
+      return can(TAB_TO_SCREEN_KEY[tab], 'view');
+    },
+    [can]
+  );
 
   const firstPermittedTab = useMemo<NavTabId | null>(() => {
     if (!currentUser) return null;
     for (const tab of TAB_ORDER) {
-      if (can(TAB_TO_SCREEN_KEY[tab], 'view')) return tab;
+      if (canAccessTab(tab)) return tab;
     }
     return null;
-  }, [currentUser, can]);
+  }, [currentUser, canAccessTab]);
 
   useEffect(() => {
     if (!currentUser || !firstPermittedTab) return;
-    if (!can(TAB_TO_SCREEN_KEY[activeTab], 'view')) {
+    if (!canAccessTab(activeTab)) {
       setActiveTab(firstPermittedTab);
     }
-  }, [currentUser, activeTab, can, firstPermittedTab]);
+  }, [currentUser, activeTab, canAccessTab, firstPermittedTab]);
+
+  useEffect(() => {
+    if (!pendingViewTarget || !currentUser) return;
+    const { tab, bookingId, subTab } = pendingViewTarget;
+    if (canAccessTab(tab)) {
+      setActiveTab(tab);
+      if (tab === 'payments' && bookingId) {
+        setPaymentBookingId(bookingId);
+      } else if (tab === 'bookings' && bookingId) {
+        const targetBk =
+          db.bookings.find((b) => b.id === bookingId) ||
+          rawDb.bookings.find((b) => b.id === bookingId);
+        if (targetBk && !targetBk.deleted_at) {
+          setNewBookingInitialDate(undefined);
+          setEditingBooking(targetBk);
+        }
+      }
+      if (tab === 'settings' && subTab) {
+        if (
+          subTab === 'hall' ||
+          subTab === 'pricing' ||
+          subTab === 'catalog' ||
+          subTab === 'events' ||
+          subTab === 'backup'
+        ) {
+          setRequestedSettingsSubTab({ tab: subTab, nonce: Date.now() });
+        }
+      }
+      if (tab === 'expenses' && subTab) {
+        if (
+          subTab === 'expenses' ||
+          subTab === 'staff' ||
+          subTab === 'attendance' ||
+          subTab === 'payroll' ||
+          subTab === 'categories'
+        ) {
+          setRequestedExpenseSubTab({ tab: subTab, nonce: Date.now() });
+        }
+      }
+    }
+    clearPendingViewTarget();
+  }, [pendingViewTarget, currentUser, can, db.bookings, rawDb.bookings, clearPendingViewTarget]);
 
   if (!isSupabaseConfigured) {
     return (
@@ -109,7 +189,7 @@ const MainShell: React.FC = () => {
     setEditingBooking(bk);
   };
 
-  const safeTab: NavTabId | null = can(TAB_TO_SCREEN_KEY[activeTab], 'view')
+  const safeTab: NavTabId | null = canAccessTab(activeTab)
     ? activeTab
     : firstPermittedTab;
 
@@ -191,7 +271,13 @@ const MainShell: React.FC = () => {
       {safeTab === 'closing' && <DailyClosingView />}
       {safeTab === 'approvals' && <ApprovalsView />}
       {safeTab === 'catalog' && <SettingsView key="catalog" initialTab="catalog" catalogOnly />}
-      {safeTab === 'expenses' && <ExpensesView key="expenses" initialSubTab="expenses" />}
+      {safeTab === 'expenses' && (
+        <ExpensesView
+          key="expenses"
+          initialSubTab="expenses"
+          requestedSubTab={requestedExpenseSubTab}
+        />
+      )}
       {safeTab === 'employees' && <ExpensesView key="employees" initialSubTab="staff" />}
       {safeTab === 'attendance' && <ExpensesView key="attendance" initialSubTab="attendance" />}
       {safeTab === 'salaries' && <ExpensesView key="salaries" initialSubTab="payroll" />}
@@ -201,7 +287,10 @@ const MainShell: React.FC = () => {
       {safeTab === 'recycle' && <RecycleBinView />}
       {safeTab === 'audit' && <AuditLogView />}
       {safeTab === 'users' && <UsersView />}
-      {safeTab === 'settings' && <SettingsView key="settings" />}
+      {safeTab === 'halls' && <HallsView />}
+      {safeTab === 'settings' && (
+        <SettingsView key="settings" requestedSubTab={requestedSettingsSubTab} />
+      )}
 
       {editingBooking !== undefined && (
         <BookingModal
@@ -217,6 +306,8 @@ const MainShell: React.FC = () => {
           onClose={() => setInvoiceBooking(null)}
         />
       )}
+
+      <SaveFeedbackToasts />
     </Layout>
   );
 };

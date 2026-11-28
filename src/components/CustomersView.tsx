@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Edit3, Mail, MapPin, Phone, Plus, Search, Trash2, UserCheck, Users, X } from 'lucide-react';
+import { Edit3, Loader2, Mail, MapPin, Phone, Plus, Search, Trash2, UserCheck, Users, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { tr } from '../i18n/translations';
 import { Customer } from '../types';
@@ -26,6 +26,7 @@ export const CustomersView: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const canEdit = can('customers', 'edit');
   const canDelete = can('customers', 'delete');
@@ -267,11 +268,23 @@ export const CustomersView: React.FC = () => {
                           {canDelete && (
                             <button
                               type="button"
-                              onClick={() => softDeleteCustomer(c.id)}
+                              disabled={deletingId === c.id}
+                              onClick={async () => {
+                                setDeletingId(c.id);
+                                try {
+                                  await softDeleteCustomer(c.id);
+                                } finally {
+                                  setDeletingId(null);
+                                }
+                              }}
                               title={tr('delete', lang)}
-                              className="p-2 rounded-lg border border-slate-800 bg-slate-900/70 text-slate-400 hover:text-rose-400 hover:border-rose-500/40"
+                              className="p-2 rounded-lg border border-slate-800 bg-slate-900/70 text-slate-400 hover:text-rose-400 hover:border-rose-500/40 disabled:opacity-50"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              {deletingId === c.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-3.5 h-3.5" />
+                              )}
                             </button>
                           )}
                         </div>
@@ -392,9 +405,10 @@ export const CustomersView: React.FC = () => {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-semibold disabled:opacity-50"
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-semibold inline-flex items-center gap-1.5 disabled:opacity-50"
                 >
-                  {saving ? tr('saving', lang) : tr('save', lang)}
+                  {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{saving ? tr('saving', lang) : tr('save', lang)}</span>
                 </button>
               </div>
             </form>

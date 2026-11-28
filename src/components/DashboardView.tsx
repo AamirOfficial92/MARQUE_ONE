@@ -11,9 +11,9 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import {
+  formatBookingEventDisplay,
   pickLocalized,
   tr,
-  translateEventType,
   translateFloor,
   translateStatus,
 } from '../i18n/translations';
@@ -41,7 +41,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenInvoice,
   onNavigateReminders,
 }) => {
-  const { db, lang, can } = useApp();
+  const { db, rawDb, activeHall, lang, can } = useApp();
   const isUr = lang === 'ur';
   const today = todayISO();
   const currentMonthPrefix = today.slice(0, 7);
@@ -50,7 +50,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const canViewInvoices = can('invoices', 'view');
   const canViewReminders = can('reminders', 'view');
 
-  const hallName = pickLocalized(db.settings.hall_name, db.settings.hall_name_ur, lang);
+  const hallName = pickLocalized(activeHall.name, activeHall.name_ur, lang);
 
   const activeBookings = useMemo(
     () => db.bookings.filter((b) => !b.deleted_at && b.status !== 'Cancelled'),
@@ -124,10 +124,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     const counts: Record<string, { label: string; count: number; total: number; color: string }> =
       {};
     for (const bk of activeBookings) {
-      const et = db.eventTypes.find(
-        (t) => t.name_en.toLowerCase() === bk.event_type.toLowerCase()
-      );
-      const etLabel = translateEventType(bk.event_type, lang, db.eventTypes);
+      const et =
+        (bk.event_type_id ? db.eventTypes.find((t) => t.id === bk.event_type_id) : undefined) ||
+        db.eventTypes.find((t) => t.name_en.toLowerCase() === bk.event_type.toLowerCase());
+      const etLabel = formatBookingEventDisplay(bk, lang, db.eventTypes);
       const fin = calculateBookingFinancials(bk, db.bookingItems, db.payments);
       if (!counts[etLabel]) {
         counts[etLabel] = {
@@ -159,6 +159,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   }, [db.installments, db.bookings, today]);
 
   const buildReminderMessage = (bk: Booking, amountDue?: number, dueDate?: string) => {
+    const bookingHall = rawDb.halls.find((h) => h.id === bk.hall_id) || activeHall;
+    const bkHallName = pickLocalized(bookingHall.name, bookingHall.name_ur, lang) || hallName;
+    const contactPhone = bookingHall.whatsapp
+      ? `+${bookingHall.whatsapp}`
+      : bookingHall.phone || db.settings.phone;
     const floorText = bk.floors
       .map((f) => translateFloor(f, lang, db.floors))
       .join(isUr ? '، ' : ', ');
@@ -166,7 +171,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     if (isUr) {
       return [
         `السلام علیکم ${bk.customer_name}،`,
-        `${hallName} کی جانب سے یاددہانی:`,
+        `${bkHallName} کی جانب سے یاددہانی:`,
         `بکنگ کوڈ: ${bk.booking_code}`,
         `تقریب کی تاریخ: ${eventDateText} (${floorText})`,
         ...(amountDue
@@ -177,12 +182,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               )})`,
             ]
           : []),
-        `مزید معلومات کے لیے رابطہ کریں: ${db.settings.phone}`,
+        `مزید معلومات کے لیے رابطہ کریں: ${contactPhone}`,
       ].join('\n');
     }
     return [
       `Assalam-o-Alaikum ${bk.customer_name},`,
-      `Friendly reminder from ${hallName} (${db.settings.phone}):`,
+      `Friendly reminder from ${bkHallName} (${contactPhone}):`,
       `Booking Code: ${bk.booking_code}`,
       `Event Date: ${eventDateText} (${floorText})`,
       ...(amountDue
@@ -193,7 +198,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             )})`,
           ]
         : []),
-      `Thank you for choosing ${hallName}.`,
+      `Thank you for choosing ${bkHallName}.`,
     ].join('\n');
   };
 
@@ -214,7 +219,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               ? todaysEvents
                   .map(
                     (e) =>
-                      `${translateEventType(e.event_type, lang, db.eventTypes)} · ${e.floors
+                      `${formatBookingEventDisplay(e, lang, db.eventTypes)} · ${e.floors
                         .map((f) => translateFloor(f, lang, db.floors))
                         .join('/')}`
                   )

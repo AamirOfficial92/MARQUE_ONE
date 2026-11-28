@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, FileText, Plus, Printer, Trash2 } from 'lucide-react';
+import { CheckCircle2, FileText, Loader2, Plus, Printer, Trash2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { tr, translateEventType, translatePaymentMode } from '../i18n/translations';
+import { formatBookingEventDisplay, tr, translatePaymentMode } from '../i18n/translations';
 import { Booking, Payment, PaymentMode } from '../types';
 import { calculateBookingFinancials, formatDateDisplay, formatPKR, todayISO } from '../utils/formatters';
 import { ReceiptModal } from './ReceiptModal';
@@ -45,6 +45,9 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
   const [notes, setNotes] = useState<string>('');
   const [receiptTarget, setReceiptTarget] = useState<{ payment: Payment; booking: Booking } | null>(null);
   const [formMsg, setFormMsg] = useState<string | null>(null);
+  const [savingPayment, setSavingPayment] = useState(false);
+  const [togglingInstId, setTogglingInstId] = useState<string | null>(null);
+  const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null);
 
   const selectedBooking = activeBookings.find((b) => b.id === selectedBookingId) || activeBookings[0] || null;
   const fin = selectedBooking
@@ -69,35 +72,41 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
 
   const handleRecordPayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedBooking) return;
+    if (!selectedBooking || savingPayment) return;
+    setFormMsg(null);
     const numeric = Number(amount);
     if (!numeric || numeric <= 0) {
       setFormMsg(isUr ? 'روپے میں درست مثبت رقم درج کریں۔' : 'Enter a valid positive amount in PKR.');
       return;
     }
 
-    const res = await addPayment({
-      booking_id: selectedBooking.id,
-      amount: numeric,
-      payment_date: paymentDate,
-      mode,
-      reference_no: referenceNo.trim(),
-      received_by: receivedBy.trim() || (isUr ? 'اکاؤنٹس ڈیسک' : 'Accounts Desk'),
-      notes: notes.trim(),
-    });
+    setSavingPayment(true);
+    try {
+      const res = await addPayment({
+        booking_id: selectedBooking.id,
+        amount: numeric,
+        payment_date: paymentDate,
+        mode,
+        reference_no: referenceNo.trim(),
+        received_by: receivedBy.trim() || (isUr ? 'اکاؤنٹس ڈیسک' : 'Accounts Desk'),
+        notes: notes.trim(),
+      });
 
-    if (res.ok && res.payment) {
-      setAmount('');
-      setReferenceNo('');
-      setNotes('');
-      setFormMsg(
-        isUr
-          ? `رسید ${res.payment.receipt_number} محفوظ کر لی گئی۔`
-          : `Recorded ${res.payment.receipt_number}`
-      );
-      setReceiptTarget({ payment: res.payment, booking: selectedBooking });
-    } else {
-      setFormMsg(res.error || (isUr ? 'ادائیگی محفوظ نہیں ہو سکی۔' : 'Failed to record payment'));
+      if (res.ok && res.payment) {
+        setAmount('');
+        setReferenceNo('');
+        setNotes('');
+        setFormMsg(
+          isUr
+            ? `رسید ${res.payment.receipt_number} محفوظ کر لی گئی۔`
+            : `Recorded ${res.payment.receipt_number}`
+        );
+        setReceiptTarget({ payment: res.payment, booking: selectedBooking });
+      } else {
+        setFormMsg(res.error || (isUr ? 'ادائیگی محفوظ نہیں ہو سکی۔' : 'Failed to record payment'));
+      }
+    } finally {
+      setSavingPayment(false);
     }
   };
 
@@ -118,7 +127,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
               {activeBookings.map((bk) => (
                 <option key={bk.id} value={bk.id}>
                   {bk.booking_code} — {bk.customer_name} ({formatDateDisplay(bk.event_date, lang)} ·{' '}
-                  {translateEventType(bk.event_type, lang, db.eventTypes)})
+                  {formatBookingEventDisplay(bk, lang, db.eventTypes)})
                 </option>
               ))}
             </select>
@@ -263,11 +272,21 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
 
             <button
               type="submit"
-              disabled={!selectedBooking}
-              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold flex items-center justify-center gap-1.5"
+              disabled={!selectedBooking || savingPayment}
+              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50"
             >
-              <Plus className="w-4 h-4" />
-              <span>{isUr ? 'ادائیگی محفوظ کریں اور رسید بنائیں' : 'Record Payment & Generate Receipt'}</span>
+              {savingPayment ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Plus className="w-4 h-4" />
+              )}
+              <span>
+                {savingPayment
+                  ? tr('saving', lang)
+                  : isUr
+                  ? 'ادائیگی محفوظ کریں اور رسید بنائیں'
+                  : 'Record Payment & Generate Receipt'}
+              </span>
             </button>
           </form>
         )}
@@ -292,15 +311,26 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
                       <span className="font-bold text-cyan-300 tabular-nums">{formatPKR(ins.amount)}</span>
                       <button
                         type="button"
-                        disabled={!canEdit}
-                        onClick={() => toggleInstallmentPaid(ins.id, !ins.is_paid)}
+                        disabled={!canEdit || togglingInstId === ins.id}
+                        onClick={async () => {
+                          setTogglingInstId(ins.id);
+                          try {
+                            await toggleInstallmentPaid(ins.id, !ins.is_paid);
+                          } finally {
+                            setTogglingInstId(null);
+                          }
+                        }}
                         className={`px-2.5 py-1 rounded-lg border text-xs font-medium flex items-center gap-1 disabled:opacity-60 disabled:cursor-not-allowed ${
                           ins.is_paid
                             ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
                             : 'border-slate-700 bg-slate-900 text-slate-300 hover:border-cyan-500/40'
                         }`}
                       >
-                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        {togglingInstId === ins.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                        )}
                         <span>
                           {ins.is_paid ? (isUr ? 'وصول شدہ' : 'Cleared') : isUr ? 'وصول نشان زد کریں' : 'Mark Paid'}
                         </span>
@@ -367,11 +397,23 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialBookingId, on
                           {canDelete && (
                             <button
                               type="button"
-                              onClick={() => softDeletePayment(p.id)}
+                              disabled={deletingPaymentId === p.id}
+                              onClick={async () => {
+                                setDeletingPaymentId(p.id);
+                                try {
+                                  await softDeletePayment(p.id);
+                                } finally {
+                                  setDeletingPaymentId(null);
+                                }
+                              }}
                               title={tr('delete', lang)}
-                              className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-rose-400"
+                              className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-rose-400 disabled:opacity-50"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              {deletingPaymentId === p.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-3.5 h-3.5" />
+                              )}
                             </button>
                           )}
                         </div>

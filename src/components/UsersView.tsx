@@ -4,7 +4,9 @@ import {
   Building2,
   Edit3,
   KeyRound,
+  Loader2,
   Lock,
+  RefreshCw,
   RotateCcw,
   ShieldAlert,
   ShieldCheck,
@@ -13,7 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { translateRole } from '../i18n/translations';
+import { pickLocalized, tr, translateRole } from '../i18n/translations';
 import {
   PermissionAction,
   PermissionScreenKey,
@@ -48,6 +50,7 @@ const PermissionsChecklist: React.FC<PermissionsChecklistProps> = ({
   lang,
   disabled = false,
 }) => {
+  const isUr = lang === 'ur';
   const matrix = useMemo(() => toPermissionMatrix(entries, targetRole), [entries, targetRole]);
   const isTargetSuperAdmin = targetRole === 'super_admin';
   const isActorAdmin = actorRole === 'admin';
@@ -100,7 +103,6 @@ const PermissionsChecklist: React.FC<PermissionsChecklistProps> = ({
     if (disabled || isTargetSuperAdmin) return;
     const template = getDefaultPermissionsForRole(targetRole);
     if (isActorAdmin) {
-      // Clamp template to permissions the Admin holds
       onChange(
         template.map((entry) => ({
           screen_key: entry.screen_key,
@@ -122,7 +124,11 @@ const PermissionsChecklist: React.FC<PermissionsChecklistProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
           <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Screen Permissions Matrix (19 Screens)</span>
+          <span>
+            {isUr
+              ? `اسکرین اختیارات کی فہرست (${SCREEN_DEFINITIONS.length} اسکرینز)`
+              : `Screen Permissions Matrix (${SCREEN_DEFINITIONS.length} Screens)`}
+          </span>
         </div>
         {!disabled && !isTargetSuperAdmin && (
           <button
@@ -131,14 +137,20 @@ const PermissionsChecklist: React.FC<PermissionsChecklistProps> = ({
             className="text-[11px] text-cyan-300 hover:text-cyan-200 inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-800 bg-slate-900/60"
           >
             <RotateCcw className="w-3 h-3" />
-            <span>Reset to {translateRole(targetRole, lang)} Default</span>
+            <span>
+              {isUr
+                ? `${translateRole(targetRole, lang)} کے ڈیفالٹ اختیارات بحال کریں`
+                : `Reset to ${translateRole(targetRole, lang)} Default`}
+            </span>
           </button>
         )}
       </div>
 
       {isTargetSuperAdmin && (
         <div className="p-2.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 text-[11px] text-cyan-200">
-          Super Admin automatically has unrestricted View, Edit, and Delete access across all screens and all halls.
+          {isUr
+            ? 'سپر ایڈمن کو خودکار طور پر تمام اسکرینز اور تمام ہالز میں دیکھنے، ترمیم اور حذف کرنے کے مکمل اختیارات حاصل ہوتے ہیں۔'
+            : 'Super Admin automatically has unrestricted View, Edit, and Delete access across all screens and all halls.'}
         </div>
       )}
 
@@ -146,7 +158,9 @@ const PermissionsChecklist: React.FC<PermissionsChecklistProps> = ({
         <div className="p-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-[11px] text-amber-200 flex items-start gap-2">
           <Lock className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-400" />
           <span>
-            Delegation rule: You can only grant permissions that you hold yourself. Locked options are permissions not enabled on your own account.
+            {isUr
+              ? 'اختیارات دینے کا اصول: آپ صرف وہی اختیارات دے سکتے ہیں جو آپ کے اپنے اکاؤنٹ میں فعال ہیں۔ بند خانے آپ کے اکاؤنٹ میں موجود نہیں ہیں۔'
+              : 'Delegation rule: You can only grant permissions that you hold yourself. Locked options are permissions not enabled on your own account.'}
           </span>
         </div>
       )}
@@ -155,10 +169,10 @@ const PermissionsChecklist: React.FC<PermissionsChecklistProps> = ({
         <table className="w-full text-[11px]">
           <thead className="bg-slate-900/90 text-slate-400 border-b border-slate-800 sticky top-0 z-10">
             <tr>
-              <th className="py-2 px-3 text-start">Screen</th>
-              <th className="py-2 px-2.5 text-center w-14">View</th>
-              <th className="py-2 px-2.5 text-center w-14">Edit</th>
-              <th className="py-2 px-2.5 text-center w-14">Delete</th>
+              <th className="py-2 px-3 text-start">{isUr ? 'اسکرین' : 'Screen'}</th>
+              <th className="py-2 px-2.5 text-center w-14">{tr('view', lang)}</th>
+              <th className="py-2 px-2.5 text-center w-14">{tr('edit', lang)}</th>
+              <th className="py-2 px-2.5 text-center w-14">{isUr ? 'حذف' : 'Delete'}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/70">
@@ -182,16 +196,16 @@ const PermissionsChecklist: React.FC<PermissionsChecklistProps> = ({
                   <td className="py-2 px-3">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       {def.sensitive && (
-                        <span title="Sensitive financial / system screen">
+                        <span title={isUr ? 'حساس مالی یا نظامی اسکرین' : 'Sensitive financial / system screen'}>
                           <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                         </span>
                       )}
                       <span className="font-medium text-slate-100">
-                        {lang === 'ur' ? def.labelUr : def.labelEn}
+                        {isUr ? def.labelUr : def.labelEn}
                       </span>
                       {def.sensitive && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded border border-amber-500/35 bg-amber-500/10 text-amber-300">
-                          Sensitive
+                          {isUr ? 'حساس' : 'Sensitive'}
                         </span>
                       )}
                     </div>
@@ -201,7 +215,13 @@ const PermissionsChecklist: React.FC<PermissionsChecklistProps> = ({
                       type="checkbox"
                       checked={viewChecked}
                       disabled={viewLocked}
-                      title={viewLocked && isActorAdmin ? 'You do not hold View permission for this screen' : 'View'}
+                      title={
+                        viewLocked && isActorAdmin
+                          ? isUr
+                            ? 'آپ کو اس اسکرین کو دیکھنے کا اختیار حاصل نہیں'
+                            : 'You do not hold View permission for this screen'
+                          : tr('view', lang)
+                      }
                       onChange={(e) => handleToggle(def.key, 'view', e.target.checked)}
                       className="rounded border-slate-700 bg-slate-900 text-cyan-500 disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
                     />
@@ -211,7 +231,15 @@ const PermissionsChecklist: React.FC<PermissionsChecklistProps> = ({
                       type="checkbox"
                       checked={editChecked}
                       disabled={editLocked}
-                      title={editLocked && isActorAdmin ? 'You do not hold Edit permission for this screen' : 'Create / Edit'}
+                      title={
+                        editLocked && isActorAdmin
+                          ? isUr
+                            ? 'آپ کو اس اسکرین میں ترمیم کا اختیار حاصل نہیں'
+                            : 'You do not hold Edit permission for this screen'
+                          : isUr
+                          ? 'اندراج / ترمیم'
+                          : 'Create / Edit'
+                      }
                       onChange={(e) => handleToggle(def.key, 'edit', e.target.checked)}
                       className="rounded border-slate-700 bg-slate-900 text-violet-500 disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
                     />
@@ -223,7 +251,11 @@ const PermissionsChecklist: React.FC<PermissionsChecklistProps> = ({
                       disabled={deleteLocked}
                       title={
                         deleteLocked && isActorAdmin
-                          ? 'You do not hold Delete permission for this screen'
+                          ? isUr
+                            ? 'آپ کو اس اسکرین میں حذف کرنے کا اختیار حاصل نہیں'
+                            : 'You do not hold Delete permission for this screen'
+                          : isUr
+                          ? 'حذف (سپر ایڈمن کے سوا عام طور پر بند)'
                           : 'Delete (Off by default except Super Admin)'
                       }
                       onChange={(e) => handleToggle(def.key, 'delete', e.target.checked)}
@@ -253,6 +285,7 @@ export const UsersView: React.FC = () => {
     manageUserWithEdgeFunction,
   } = useApp();
 
+  const isUr = lang === 'ur';
   const isSuperAdmin = currentUser?.role === 'super_admin';
   const isAdmin = currentUser?.role === 'admin';
   const canEditUsers = (isSuperAdmin || isAdmin) && can('users', 'edit');
@@ -280,6 +313,7 @@ export const UsersView: React.FC = () => {
     }));
   });
   const [submitting, setSubmitting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   // Edit User & Permissions modal state
@@ -296,6 +330,7 @@ export const UsersView: React.FC = () => {
   const [resetTarget, setResetTarget] = useState<UserProfile | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [resetting, setResetting] = useState(false);
+  const [busyUserId, setBusyUserId] = useState<string | null>(null);
 
   const clampPermissionsForActor = (entries: ScreenPermissionEntry[]): ScreenPermissionEntry[] => {
     if (isSuperAdmin) return entries;
@@ -320,15 +355,28 @@ export const UsersView: React.FC = () => {
 
   const visibleProfiles = useMemo(() => {
     if (isSuperAdmin) return db.profiles;
-    // Hall Admin only manages managers in their own hall (+ sees own row)
     return db.profiles.filter(
       (p) => p.hall_id === activeHallId && (p.role === 'manager' || p.id === currentUser?.id)
     );
   }, [db.profiles, isSuperAdmin, activeHallId, currentUser?.id]);
 
   const hallNameFor = (hid: string | null) => {
-    if (!hid) return 'All Halls (Global)';
-    return db.halls.find((h) => h.id === hid)?.name || 'Marquee 1';
+    if (!hid) return isUr ? 'تمام ہالز (گلوبل)' : 'All Halls (Global)';
+    const h = db.halls.find((item) => item.id === hid);
+    if (!h) return pickLocalized(activeHall.name, activeHall.name_ur, lang);
+    return pickLocalized(h.name, h.name_ur, lang);
+  };
+
+  const handleRefreshUsers = async () => {
+    setMsg(null);
+    setRefreshing(true);
+    const res = await manageUserWithEdgeFunction({ action: 'list_users' });
+    setRefreshing(false);
+    if (!res.ok) {
+      setMsg({ ok: false, text: res.error || (isUr ? 'صارفین لوڈ نہیں ہو سکے۔' : 'Could not refresh users list.') });
+    } else {
+      setMsg({ ok: true, text: isUr ? 'صارفین کی فہرست تازہ کر دی گئی۔' : 'Users list refreshed.' });
+    }
   };
 
   const handleCreateUser = async (e: React.FormEvent) => {
@@ -359,7 +407,7 @@ export const UsersView: React.FC = () => {
     setSubmitting(false);
 
     if (!res.ok) {
-      setMsg({ ok: false, text: res.error || 'Could not create user' });
+      setMsg({ ok: false, text: res.error || (isUr ? 'صارف نہیں بن سکا۔' : 'Could not create user.') });
       return;
     }
     setFullName('');
@@ -369,7 +417,9 @@ export const UsersView: React.FC = () => {
     setCreatePermissions(clampPermissionsForActor(getDefaultPermissionsForRole(effectiveRole)));
     setMsg({
       ok: true,
-      text: `${translateRole(effectiveRole, lang)} account created with custom screen permissions.`,
+      text: isUr
+        ? `${translateRole(effectiveRole, lang)} اکاؤنٹ مخصوص اختیارات کے ساتھ بنا دیا گیا۔`
+        : `${translateRole(effectiveRole, lang)} account created with custom screen permissions.`,
     });
   };
 
@@ -408,46 +458,64 @@ export const UsersView: React.FC = () => {
     setSavingEdit(false);
 
     if (!res.ok) {
-      setMsg({ ok: false, text: res.error || 'Could not update user & permissions' });
+      setMsg({ ok: false, text: res.error || (isUr ? 'صارف اور اختیارات اپڈیٹ نہیں ہو سکے۔' : 'Could not update user & permissions.') });
       return;
     }
+    const displayName = editName.trim() || editTarget.full_name;
     setMsg({
       ok: true,
-      text: `Updated profile & screen permissions for ${editName.trim() || editTarget.full_name}. Changes apply on their next refresh.`,
+      text: isUr
+        ? `${displayName} کا پروفائل اور اسکرین اختیارات اپڈیٹ کر دیے گئے۔ تبدیلیاں اگلے ریفریش پر لاگو ہوں گی۔`
+        : `Updated profile & screen permissions for ${displayName}. Changes apply on their next refresh.`,
     });
     setEditTarget(null);
   };
 
   const handleHallChange = async (u: UserProfile, nextHallId: string) => {
-    if (!canEditUsers) return;
+    if (!canEditUsers || busyUserId) return;
     setMsg(null);
-    const res = await manageUserWithEdgeFunction({
-      action: 'update_user',
-      userId: u.id,
-      hall_id: nextHallId || null,
-    });
-    if (!res.ok) {
-      setMsg({ ok: false, text: res.error || 'Could not assign hall' });
-    } else {
-      setMsg({ ok: true, text: `Updated hall assignment for ${u.full_name}.` });
+    setBusyUserId(u.id);
+    try {
+      const res = await manageUserWithEdgeFunction({
+        action: 'update_user',
+        userId: u.id,
+        hall_id: nextHallId || null,
+      });
+      if (!res.ok) {
+        setMsg({ ok: false, text: res.error || (isUr ? 'ہال تفویض نہیں ہو سکا۔' : 'Could not assign hall.') });
+      } else {
+        setMsg({
+          ok: true,
+          text: isUr ? `${u.full_name} کا ہال اپڈیٹ کر دیا گیا۔` : `Updated hall assignment for ${u.full_name}.`,
+        });
+      }
+    } finally {
+      setBusyUserId(null);
     }
   };
 
   const handleToggleActive = async (u: UserProfile) => {
-    if (!canEditUsers) return;
+    if (!canEditUsers || busyUserId) return;
     setMsg(null);
-    const res = await manageUserWithEdgeFunction({
-      action: 'toggle_active',
-      userId: u.id,
-      is_active: !u.is_active,
-    });
-    if (!res.ok) {
-      setMsg({ ok: false, text: res.error || 'Could not update account status' });
-    } else {
-      setMsg({
-        ok: true,
-        text: `${u.full_name} is now ${!u.is_active ? 'Active' : 'Deactivated'}.`,
+    setBusyUserId(u.id);
+    try {
+      const res = await manageUserWithEdgeFunction({
+        action: 'deactivate_user',
+        userId: u.id,
+        is_active: !u.is_active,
       });
+      if (!res.ok) {
+        setMsg({ ok: false, text: res.error || (isUr ? 'اکاؤنٹ کی حالت تبدیل نہیں ہو سکی۔' : 'Could not update account status.') });
+      } else {
+        setMsg({
+          ok: true,
+          text: isUr
+            ? `${u.full_name} کا اکاؤنٹ اب ${!u.is_active ? 'فعال' : 'غیر فعال'} ہے۔`
+            : `${u.full_name} is now ${!u.is_active ? 'Active' : 'Deactivated'}.`,
+        });
+      }
+    } finally {
+      setBusyUserId(null);
     }
   };
 
@@ -462,17 +530,24 @@ export const UsersView: React.FC = () => {
     });
     setResetting(false);
     if (!res.ok) {
-      setMsg({ ok: false, text: res.error || 'Could not reset password' });
+      setMsg({ ok: false, text: res.error || (isUr ? 'پاس ورڈ ری سیٹ نہیں ہو سکا۔' : 'Could not reset password.') });
       return;
     }
-    setMsg({ ok: true, text: `Password reset for ${resetTarget.full_name}.` });
+    setMsg({
+      ok: true,
+      text: isUr ? `${resetTarget.full_name} کا پاس ورڈ تبدیل کر دیا گیا۔` : `Password reset for ${resetTarget.full_name}.`,
+    });
     setResetTarget(null);
     setNewPassword('');
   };
 
   const getUserPermSummary = (u: UserProfile) => {
     if (u.role === 'super_admin') {
-      return { viewCount: SCREEN_DEFINITIONS.length, editCount: SCREEN_DEFINITIONS.length, deleteCount: SCREEN_DEFINITIONS.length };
+      return {
+        viewCount: SCREEN_DEFINITIONS.length,
+        editCount: SCREEN_DEFINITIONS.length,
+        deleteCount: SCREEN_DEFINITIONS.length,
+      };
     }
     const list = getPermissionsForUser(u.id);
     return {
@@ -482,20 +557,27 @@ export const UsersView: React.FC = () => {
     };
   };
 
+  const activeHallDisplayName = pickLocalized(activeHall.name, activeHall.name_ur, lang);
+
   return (
     <div className="space-y-5">
       <div className="glass-panel rounded-2xl p-4 border border-cyan-500/30 flex items-start gap-3 text-xs">
         <ShieldAlert className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
         <div className="text-slate-300 leading-relaxed">
-          User accounts and per-screen database permissions are enforced both in PostgreSQL Row Level Security and securely managed via the{' '}
-          <code className="text-cyan-300 font-mono">manage-users</code> Edge Function.
+          {isUr
+            ? 'صارفین کے اکاؤنٹس اور ہر اسکرین کے اختیارات ڈیٹابیس کی حفاظتی پالیسیوں (RLS) اور سرور فنکشن کے ذریعے محفوظ طریقے سے نافذ کیے جاتے ہیں۔'
+            : 'User accounts and per-screen database permissions are enforced in PostgreSQL Row Level Security and managed securely via the server user management function.'}
         </div>
       </div>
 
       {!canEditUsers && (
         <div className="glass-panel rounded-2xl p-4 border border-amber-500/30 text-xs text-amber-200">
           {isSuperAdmin || isAdmin
-            ? 'You have View-only access to the Users directory. Users Edit permission is required to create accounts or modify screen permissions.'
+            ? isUr
+              ? 'آپ کو صارفین کی فہرست صرف دیکھنے کا اختیار ہے۔ نیا اکاؤنٹ بنانے یا اختیارات بدلنے کے لیے صارفین میں ترمیم کا اختیار درکار ہے۔'
+              : 'You have View-only access to the Users directory. Users Edit permission is required to create accounts or modify screen permissions.'
+            : isUr
+            ? 'مینیجر صارفین کے اکاؤنٹس بنا یا تبدیل نہیں کر سکتے۔'
             : 'Managers cannot create or modify staff user accounts.'}
         </div>
       )}
@@ -517,12 +599,22 @@ export const UsersView: React.FC = () => {
           <form onSubmit={handleCreateUser} className="xl:col-span-5 glass-panel rounded-2xl p-5 space-y-4">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <UserPlus className="w-4 h-4 text-cyan-400" />
-              <span>{isSuperAdmin ? 'Create Staff User & Permissions' : 'Create Hall Manager & Permissions'}</span>
+              <span>
+                {isSuperAdmin
+                  ? isUr
+                    ? 'نیا عملہ صارف اور اختیارات بنائیں'
+                    : 'Create Staff User & Permissions'
+                  : isUr
+                  ? 'نیا ہال مینیجر اور اختیارات بنائیں'
+                  : 'Create Hall Manager & Permissions'}
+              </span>
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-slate-300 mb-1">Full Name *</label>
+                <label className="block text-xs text-slate-300 mb-1">
+                  {isUr ? 'مکمل نام *' : 'Full Name *'}
+                </label>
                 <input
                   type="text"
                   required
@@ -532,7 +624,7 @@ export const UsersView: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-300 mb-1">Mobile Phone</label>
+                <label className="block text-xs text-slate-300 mb-1">{tr('phone', lang)}</label>
                 <input
                   type="text"
                   value={phone}
@@ -545,7 +637,9 @@ export const UsersView: React.FC = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-slate-300 mb-1">Email *</label>
+                <label className="block text-xs text-slate-300 mb-1">
+                  {tr('email', lang)} *
+                </label>
                 <input
                   type="email"
                   required
@@ -556,7 +650,7 @@ export const UsersView: React.FC = () => {
               </div>
               <div>
                 <label className="block text-xs text-slate-300 mb-1">
-                  Initial Password *
+                  {isUr ? 'ابتدائی پاس ورڈ *' : 'Initial Password *'}
                 </label>
                 <input
                   type="password"
@@ -564,7 +658,7 @@ export const UsersView: React.FC = () => {
                   minLength={6}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Min 6 characters"
+                  placeholder={isUr ? 'کم از کم 6 حروف' : 'Min 6 characters'}
                   className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
                 />
               </div>
@@ -573,20 +667,30 @@ export const UsersView: React.FC = () => {
             {isSuperAdmin ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1">Role Template</label>
+                  <label className="block text-xs text-slate-300 mb-1">
+                    {isUr ? 'عہدے کا ٹیمپلیٹ' : 'Role Template'}
+                  </label>
                   <select
                     value={role}
                     onChange={(e) => handleCreateRoleSelect(e.target.value as UserRole)}
                     className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
                   >
-                    <option value="super_admin">Super Admin (All Halls)</option>
-                    <option value="admin">Hall Admin (Template)</option>
-                    <option value="manager">Hall Manager (Template)</option>
+                    <option value="super_admin">
+                      {isUr ? 'سپر ایڈمن (تمام ہالز)' : 'Super Admin (All Halls)'}
+                    </option>
+                    <option value="admin">
+                      {isUr ? 'ہال ایڈمن (ٹیمپلیٹ)' : 'Hall Admin (Template)'}
+                    </option>
+                    <option value="manager">
+                      {isUr ? 'ہال مینیجر (ٹیمپلیٹ)' : 'Hall Manager (Template)'}
+                    </option>
                   </select>
                 </div>
                 {role !== 'super_admin' && (
                   <div>
-                    <label className="block text-xs text-slate-300 mb-1">Assigned Hall</label>
+                    <label className="block text-xs text-slate-300 mb-1">
+                      {isUr ? 'متعلقہ ہال' : 'Assigned Hall'}
+                    </label>
                     <select
                       value={hallId}
                       onChange={(e) => setHallId(e.target.value)}
@@ -594,7 +698,7 @@ export const UsersView: React.FC = () => {
                     >
                       {db.halls.map((h) => (
                         <option key={h.id} value={h.id}>
-                          {h.name} ({h.booking_code_prefix})
+                          {pickLocalized(h.name, h.name_ur, lang)} ({h.booking_code_prefix})
                         </option>
                       ))}
                     </select>
@@ -604,24 +708,26 @@ export const UsersView: React.FC = () => {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1">Role</label>
+                  <label className="block text-xs text-slate-300 mb-1">{tr('role', lang)}</label>
                   <select
                     value="manager"
                     onChange={() => handleCreateRoleSelect('manager')}
                     className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
                   >
-                    <option value="manager">Hall Manager</option>
+                    <option value="manager">{translateRole('manager', lang)}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-300 mb-1">Assigned Hall</label>
+                  <label className="block text-xs text-slate-300 mb-1">
+                    {isUr ? 'متعلقہ ہال' : 'Assigned Hall'}
+                  </label>
                   <select
                     value={currentUser?.hall_id || activeHallId}
                     onChange={() => setHallId(currentUser?.hall_id || activeHallId)}
                     className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
                   >
                     <option value={currentUser?.hall_id || activeHallId}>
-                      {activeHall.name} ({activeHall.booking_code_prefix})
+                      {activeHallDisplayName} ({activeHall.booking_code_prefix})
                     </option>
                   </select>
                 </div>
@@ -640,29 +746,63 @@ export const UsersView: React.FC = () => {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold disabled:opacity-50"
+              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
             >
-              {submitting ? 'Creating...' : isSuperAdmin ? 'Create User & Save Permissions' : 'Create Manager & Save Permissions'}
+              {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              <span>
+                {submitting
+                  ? tr('creating', lang)
+                  : isSuperAdmin
+                  ? isUr
+                    ? 'صارف بنائیں اور اختیارات محفوظ کریں'
+                    : 'Create User & Save Permissions'
+                  : isUr
+                  ? 'مینیجر بنائیں اور اختیارات محفوظ کریں'
+                  : 'Create Manager & Save Permissions'}
+              </span>
             </button>
           </form>
         )}
 
         <div className={`${canEditUsers ? 'xl:col-span-7' : ''} glass-panel rounded-2xl overflow-hidden self-start`}>
-          <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
+          <div className="px-5 py-3.5 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <Users className="w-4 h-4 text-violet-400" />
-              <span>{isSuperAdmin ? 'All Staff Accounts & Permissions' : `${activeHall.name} Staff & Permissions`}</span>
+              <span>
+                {isSuperAdmin
+                  ? isUr
+                    ? 'تمام عملہ اکاؤنٹس اور اختیارات'
+                    : 'All Staff Accounts & Permissions'
+                  : isUr
+                  ? `${activeHallDisplayName} کا عملہ اور اختیارات`
+                  : `${activeHallDisplayName} Staff & Permissions`}
+              </span>
             </h3>
-            <span className="text-xs text-slate-400 tabular-nums">{visibleProfiles.length} users</span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-slate-400 tabular-nums">
+                {visibleProfiles.length} {isUr ? 'صارفین' : 'users'}
+              </span>
+              {(isSuperAdmin || isAdmin) && (
+                <button
+                  type="button"
+                  onClick={handleRefreshUsers}
+                  disabled={refreshing}
+                  className="px-2.5 py-1 rounded-lg border border-slate-700 bg-slate-900/70 text-[11px] text-slate-200 hover:border-cyan-500/40 inline-flex items-center gap-1 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
+                  <span>{isUr ? 'تازہ کریں' : 'Refresh'}</span>
+                </button>
+              )}
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="bg-slate-900/70 text-slate-400 border-b border-slate-800">
                 <tr>
-                  <th className="py-2.5 px-4 text-start">Staff Member</th>
-                  <th className="py-2.5 px-4 text-start">Hall &amp; Role</th>
-                  <th className="py-2.5 px-4 text-start">Access Summary</th>
-                  <th className="py-2.5 px-4 text-end">Actions</th>
+                  <th className="py-2.5 px-4 text-start">{isUr ? 'عملے کا رکن' : 'Staff Member'}</th>
+                  <th className="py-2.5 px-4 text-start">{isUr ? 'ہال اور عہدہ' : 'Hall & Role'}</th>
+                  <th className="py-2.5 px-4 text-start">{isUr ? 'اختیارات کا خلاصہ' : 'Access Summary'}</th>
+                  <th className="py-2.5 px-4 text-end">{tr('actions', lang)}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/70">
@@ -674,7 +814,12 @@ export const UsersView: React.FC = () => {
                     <tr key={u.id} className={!u.is_active ? 'opacity-60' : ''}>
                       <td className="py-3 px-4">
                         <div className="font-semibold text-white">
-                          {u.full_name} {isSelf && <span className="text-[11px] text-cyan-400">(You)</span>}
+                          {u.full_name}{' '}
+                          {isSelf && (
+                            <span className="text-[11px] text-cyan-400">
+                              ({isUr ? 'آپ' : 'You'})
+                            </span>
+                          )}
                         </div>
                         <div className="text-[11px] text-slate-400">{u.email}</div>
                         <div className="text-[11px] text-slate-500 tabular-nums">{u.phone || '—'}</div>
@@ -684,12 +829,13 @@ export const UsersView: React.FC = () => {
                         {canEditUsers && isSuperAdmin && u.role !== 'super_admin' ? (
                           <select
                             value={u.hall_id || activeHallId}
+                            disabled={busyUserId === u.id}
                             onChange={(e) => handleHallChange(u, e.target.value)}
-                            className="bg-slate-950/70 border border-slate-800 rounded-lg px-2 py-1 text-[11px] text-slate-200"
+                            className="bg-slate-950/70 border border-slate-800 rounded-lg px-2 py-1 text-[11px] text-slate-200 disabled:opacity-50"
                           >
                             {db.halls.map((h) => (
                               <option key={h.id} value={h.id}>
-                                {h.name}
+                                {pickLocalized(h.name, h.name_ur, lang)}
                               </option>
                             ))}
                           </select>
@@ -702,13 +848,17 @@ export const UsersView: React.FC = () => {
                       </td>
                       <td className="py-3 px-4">
                         <div className="text-[11px] text-slate-200 tabular-nums">
-                          {summary.viewCount}/{SCREEN_DEFINITIONS.length} View · {summary.editCount} Edit
+                          {isUr
+                            ? `${summary.viewCount}/${SCREEN_DEFINITIONS.length} دیکھنا · ${summary.editCount} ترمیم`
+                            : `${summary.viewCount}/${SCREEN_DEFINITIONS.length} View · ${summary.editCount} Edit`}
                         </div>
                         <div className="text-[11px] text-slate-400 tabular-nums">
                           {summary.deleteCount > 0 ? (
-                            <span className="text-rose-300">{summary.deleteCount} Delete enabled</span>
+                            <span className="text-rose-300">
+                              {isUr ? `${summary.deleteCount} حذف فعال` : `${summary.deleteCount} Delete enabled`}
+                            </span>
                           ) : (
-                            <span>No Delete rights</span>
+                            <span>{isUr ? 'حذف کا اختیار نہیں' : 'No Delete rights'}</span>
                           )}
                         </div>
                       </td>
@@ -721,7 +871,7 @@ export const UsersView: React.FC = () => {
                               className="px-2.5 py-1 rounded-lg border border-cyan-500/40 bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25 text-xs font-medium inline-flex items-center gap-1"
                             >
                               <Edit3 className="w-3 h-3" />
-                              <span>Edit &amp; Permissions</span>
+                              <span>{isUr ? 'ترمیم و اختیارات' : 'Edit & Permissions'}</span>
                             </button>
                             <button
                               type="button"
@@ -729,27 +879,29 @@ export const UsersView: React.FC = () => {
                                 setResetTarget(u);
                                 setNewPassword('');
                               }}
-                              title="Reset Password"
+                              title={isUr ? 'پاس ورڈ تبدیل کریں' : 'Reset Password'}
                               className="px-2 py-1 rounded-lg border border-slate-700 bg-slate-900/70 text-slate-200 hover:border-cyan-500/40 text-xs inline-flex items-center gap-1"
                             >
                               <KeyRound className="w-3 h-3 text-amber-400" />
-                              <span>PW</span>
+                              <span>{isUr ? 'پاس ورڈ' : 'PW'}</span>
                             </button>
                             <button
                               type="button"
+                              disabled={busyUserId === u.id}
                               onClick={() => handleToggleActive(u)}
-                              className={`px-2 py-1 rounded-lg border text-xs font-medium ${
+                              className={`px-2 py-1 rounded-lg border text-xs font-medium inline-flex items-center gap-1 disabled:opacity-50 ${
                                 u.is_active
                                   ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
                                   : 'border-rose-500/40 bg-rose-500/10 text-rose-300'
                               }`}
                             >
-                              {u.is_active ? 'Active' : 'Off'}
+                              {busyUserId === u.id && <Loader2 className="w-3 h-3 animate-spin" />}
+                              <span>{u.is_active ? tr('active', lang) : tr('inactive', lang)}</span>
                             </button>
                           </div>
                         ) : (
                           <span className="text-[11px] text-slate-500">
-                            {u.is_active ? 'Active' : 'Deactivated'}
+                            {u.is_active ? tr('active', lang) : tr('inactive', lang)}
                           </span>
                         )}
                       </td>
@@ -770,13 +922,14 @@ export const UsersView: React.FC = () => {
               <div>
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-cyan-400" />
-                  <span>Edit User &amp; Screen Permissions</span>
+                  <span>{isUr ? 'صارف اور اسکرین اختیارات میں ترمیم' : 'Edit User & Screen Permissions'}</span>
                 </h3>
                 <p className="text-[11px] text-slate-400 mt-0.5">{editTarget.email}</p>
               </div>
               <button
                 type="button"
                 onClick={() => setEditTarget(null)}
+                aria-label={tr('close', lang)}
                 className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-white"
               >
                 <X className="w-4 h-4" />
@@ -786,7 +939,9 @@ export const UsersView: React.FC = () => {
             <form onSubmit={handleSaveEditUser} className="space-y-4 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-300 mb-1">Full Name *</label>
+                  <label className="block text-slate-300 mb-1">
+                    {isUr ? 'مکمل نام *' : 'Full Name *'}
+                  </label>
                   <input
                     type="text"
                     required
@@ -796,7 +951,7 @@ export const UsersView: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-300 mb-1">Phone</label>
+                  <label className="block text-slate-300 mb-1">{tr('phone', lang)}</label>
                   <input
                     type="text"
                     value={editPhone}
@@ -808,7 +963,9 @@ export const UsersView: React.FC = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
                 <div>
-                  <label className="block text-slate-300 mb-1">Role Template</label>
+                  <label className="block text-slate-300 mb-1">
+                    {isUr ? 'عہدے کا ٹیمپلیٹ' : 'Role Template'}
+                  </label>
                   {isSuperAdmin ? (
                     <select
                       value={editRole}
@@ -819,9 +976,9 @@ export const UsersView: React.FC = () => {
                       }}
                       className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
                     >
-                      <option value="super_admin">super_admin</option>
-                      <option value="admin">admin</option>
-                      <option value="manager">manager</option>
+                      <option value="super_admin">{translateRole('super_admin', lang)}</option>
+                      <option value="admin">{translateRole('admin', lang)}</option>
+                      <option value="manager">{translateRole('manager', lang)}</option>
                     </select>
                   ) : (
                     <select
@@ -836,7 +993,9 @@ export const UsersView: React.FC = () => {
 
                 {editRole !== 'super_admin' && (
                   <div>
-                    <label className="block text-slate-300 mb-1">Assigned Hall</label>
+                    <label className="block text-slate-300 mb-1">
+                      {isUr ? 'متعلقہ ہال' : 'Assigned Hall'}
+                    </label>
                     {isSuperAdmin ? (
                       <select
                         value={editHallId}
@@ -845,7 +1004,7 @@ export const UsersView: React.FC = () => {
                       >
                         {db.halls.map((h) => (
                           <option key={h.id} value={h.id}>
-                            {h.name}
+                            {pickLocalized(h.name, h.name_ur, lang)}
                           </option>
                         ))}
                       </select>
@@ -856,7 +1015,7 @@ export const UsersView: React.FC = () => {
                         className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
                       >
                         <option value={currentUser?.hall_id || activeHallId}>
-                          {activeHall.name}
+                          {activeHallDisplayName}
                         </option>
                       </select>
                     )}
@@ -870,7 +1029,7 @@ export const UsersView: React.FC = () => {
                     onChange={(e) => setEditActive(e.target.checked)}
                     className="rounded border-slate-700 bg-slate-900"
                   />
-                  <span>Account Active</span>
+                  <span>{isUr ? 'اکاؤنٹ فعال ہے' : 'Account Active'}</span>
                 </label>
               </div>
 
@@ -889,14 +1048,21 @@ export const UsersView: React.FC = () => {
                   onClick={() => setEditTarget(null)}
                   className="px-4 py-2 rounded-xl border border-slate-800 text-slate-300"
                 >
-                  Cancel
+                  {tr('cancel', lang)}
                 </button>
                 <button
                   type="submit"
                   disabled={savingEdit}
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-semibold disabled:opacity-50"
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-semibold inline-flex items-center gap-1.5 disabled:opacity-50"
                 >
-                  {savingEdit ? 'Saving...' : 'Save User & Permissions'}
+                  {savingEdit && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>
+                    {savingEdit
+                      ? tr('saving', lang)
+                      : isUr
+                      ? 'صارف اور اختیارات محفوظ کریں'
+                      : 'Save User & Permissions'}
+                  </span>
                 </button>
               </div>
             </form>
@@ -911,11 +1077,12 @@ export const UsersView: React.FC = () => {
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
                 <KeyRound className="w-4 h-4 text-amber-400" />
-                <span>Reset Password</span>
+                <span>{isUr ? 'پاس ورڈ ری سیٹ کریں' : 'Reset Password'}</span>
               </h3>
               <button
                 type="button"
                 onClick={() => setResetTarget(null)}
+                aria-label={tr('close', lang)}
                 className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-white"
               >
                 <X className="w-4 h-4" />
@@ -923,10 +1090,20 @@ export const UsersView: React.FC = () => {
             </div>
             <form onSubmit={handleConfirmResetPassword} className="space-y-3 text-xs">
               <p className="text-slate-300">
-                Set a new login password for <strong>{resetTarget.full_name}</strong> ({resetTarget.email}).
+                {isUr ? (
+                  <>
+                    <strong>{resetTarget.full_name}</strong> ({resetTarget.email}) کے لیے نیا لاگ ان پاس ورڈ مقرر کریں۔
+                  </>
+                ) : (
+                  <>
+                    Set a new login password for <strong>{resetTarget.full_name}</strong> ({resetTarget.email}).
+                  </>
+                )}
               </p>
               <div>
-                <label className="block text-slate-300 mb-1">New Password (min 6 chars) *</label>
+                <label className="block text-slate-300 mb-1">
+                  {isUr ? 'نیا پاس ورڈ (کم از کم 6 حروف) *' : 'New Password (min 6 chars) *'}
+                </label>
                 <input
                   type="password"
                   required
@@ -942,14 +1119,15 @@ export const UsersView: React.FC = () => {
                   onClick={() => setResetTarget(null)}
                   className="px-4 py-2 rounded-xl border border-slate-800 text-slate-300"
                 >
-                  Cancel
+                  {tr('cancel', lang)}
                 </button>
                 <button
                   type="submit"
                   disabled={resetting}
-                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-semibold disabled:opacity-50"
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-semibold inline-flex items-center gap-1.5 disabled:opacity-50"
                 >
-                  {resetting ? 'Updating...' : 'Update Password'}
+                  {resetting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{resetting ? tr('updating', lang) : isUr ? 'پاس ورڈ اپڈیٹ کریں' : 'Update Password'}</span>
                 </button>
               </div>
             </form>

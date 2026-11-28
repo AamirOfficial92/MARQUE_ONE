@@ -1,9 +1,12 @@
 import {
+  Booking,
   BookingItem,
   ChargeCatalogItem,
   ChargeCategory,
+  EventCategory,
   EventTypeItem,
   ExpenseCategory,
+  ExpenseSubcategory,
   FloorConfig,
   Language,
 } from '../types';
@@ -214,7 +217,7 @@ export const TRANSLATIONS = {
     generatedOn: 'Generated On',
     noDataInPeriod: 'No financial records found in the selected period.',
     // Settings & Catalog
-    hallProfileTab: 'Hall Profile & Terms',
+    hallProfileTab: 'Operations, Tax & Theme',
     pricingRatesTab: 'Pricing, Floors & Late Rules',
     eventTypesTab: 'Event Types',
     catalogTab: 'Charges & Categories',
@@ -225,6 +228,58 @@ export const TRANSLATIONS = {
     editItem: 'Edit Item',
     updateItem: 'Update Item',
     addNew: 'Add New',
+    // Halls & Hall Profile + Invoice Language
+    halls: 'Halls',
+    hallProfile: 'Hall Profile',
+    invoiceLanguage: 'Invoice language',
+    bankPaymentDetails: 'Bank / Payment Details',
+    ntnLabel: 'NTN',
+    strnLabel: 'STRN',
+    bankNameLabel: 'Bank',
+    accountTitleLabel: 'Account Title',
+    ibanLabel: 'IBAN',
+    websiteLabel: 'Website',
+    whatsappLabel: 'WhatsApp',
+    functionNotReachableError: 'Function not reachable: check deployment and the Verify JWT setting',
+    // Global Save Feedback & Error Mapping
+    saveSuccessTitle: 'Your data has been saved successfully.',
+    saveErrorTitle: 'Could not save',
+    technicalCodeLabel: 'Code',
+    viewRecordBtn: 'View',
+    dismissToast: 'Dismiss notification',
+    errOverlap: 'This time slot overlaps another booking on the same floor',
+    errPermission: 'You do not have permission',
+    errRequiredField: 'A required field is missing',
+    errDuplicateBookingCode: 'The booking code already exists',
+    errDuplicateInvoice: 'The invoice number already exists',
+    errDuplicateReceipt: 'The receipt number already exists',
+    errDuplicateEmail: 'This email address already exists',
+    errDuplicateGeneric: 'A duplicate record already exists',
+    errForeignKey: 'This record is linked to other data and cannot be modified or deleted',
+    errCheckConstraint: 'One of the entered values is outside the allowed range',
+    errInvalidFormat: 'One of the entered values has an invalid format',
+    errNetwork: 'Could not reach the server. Please check your connection and try again.',
+    errGenericWrite: 'Database could not save this change. Please check your entries and try again.',
+    // Two-level Event & Expense Hierarchy
+    eventCategory: 'Event Category',
+    eventItemLabel: 'Event',
+    eventNameOther: 'Event name',
+    expenseCategoryLabel: 'Expense Category',
+    expenseSubcategoryLabel: 'Sub-category',
+    manualDescriptionLabel: 'Description',
+    copyFromHall: 'Copy from another Hall',
+    copyListBtn: 'Copy List',
+    deactivateInstead: 'Deactivate Instead',
+    searchOptionsPlaceholder: 'Search...',
+    noMatchingOptions: 'No matching options',
+    allCategories: 'All Categories',
+    allSubcategories: 'All Sub-categories',
+    moveUp: 'Move up',
+    moveDown: 'Move down',
+    selectCategory: 'Select Category',
+    selectEvent: 'Select Event',
+    selectSubcategory: 'Select Sub-category',
+    deactivate: 'Deactivate',
   },
   ur: {
     appTitle: 'مارکی 1',
@@ -431,7 +486,7 @@ export const TRANSLATIONS = {
     generatedOn: 'تیاری کی تاریخ',
     noDataInPeriod: 'منتخب مدت میں کوئی مالی ریکارڈ موجود نہیں ہے۔',
     // Settings & Catalog
-    hallProfileTab: 'ہال پروفائل اور شرائط',
+    hallProfileTab: 'آپریشنز، ٹیکس اور تھیم',
     pricingRatesTab: 'کرایہ، فلورز اور تاخیر اصول',
     eventTypesTab: 'تقریبات کی اقسام',
     catalogTab: 'سروسز اور کیٹیگریز',
@@ -442,6 +497,58 @@ export const TRANSLATIONS = {
     editItem: 'ترمیم کریں',
     updateItem: 'اپڈیٹ کریں',
     addNew: 'نیا شامل کریں',
+    // Halls & Hall Profile + Invoice Language
+    halls: 'ہالز',
+    hallProfile: 'ہال پروفائل',
+    invoiceLanguage: 'انوائس کی زبان',
+    bankPaymentDetails: 'بینک / ادائیگی کی تفصیلات',
+    ntnLabel: 'این ٹی این (NTN)',
+    strnLabel: 'ایس ٹی آر این (STRN)',
+    bankNameLabel: 'بینک',
+    accountTitleLabel: 'اکاؤنٹ ٹائٹل',
+    ibanLabel: 'آئی بی اے این (IBAN)',
+    websiteLabel: 'ویب سائٹ',
+    whatsappLabel: 'واٹس ایپ',
+    functionNotReachableError: 'فنکشن تک رسائی ممکن نہیں: براہِ کرم ڈیپلائمنٹ اور Verify JWT سیٹنگ چیک کریں',
+    // Global Save Feedback & Error Mapping
+    saveSuccessTitle: 'آپ کا ڈیٹا کامیابی سے محفوظ ہوگیا ہے۔',
+    saveErrorTitle: 'ڈیٹا محفوظ نہیں ہو سکا',
+    technicalCodeLabel: 'کوڈ',
+    viewRecordBtn: 'دیکھیں',
+    dismissToast: 'اطلاع بند کریں',
+    errOverlap: 'یہ وقت اسی فلور پر دوسری بکنگ سے ٹکرا رہا ہے',
+    errPermission: 'آپ کو یہ تبدیلی کرنے کی اجازت نہیں ہے',
+    errRequiredField: 'ایک لازمی خانہ خالی ہے',
+    errDuplicateBookingCode: 'یہ بکنگ کوڈ پہلے سے موجود ہے',
+    errDuplicateInvoice: 'یہ انوائس نمبر پہلے سے موجود ہے',
+    errDuplicateReceipt: 'یہ رسید نمبر پہلے سے موجود ہے',
+    errDuplicateEmail: 'یہ ای میل ایڈریس پہلے سے موجود ہے',
+    errDuplicateGeneric: 'یہ ریکارڈ پہلے سے موجود ہے',
+    errForeignKey: 'یہ ریکارڈ دوسرے ڈیٹا سے منسلک ہے اس لیے تبدیل یا حذف نہیں کیا جا سکتا',
+    errCheckConstraint: 'درج کردہ قدروں میں سے کوئی قدر مقررہ حد سے باہر ہے',
+    errInvalidFormat: 'درج کردہ معلومات کا فارمیٹ درست نہیں ہے',
+    errNetwork: 'سرور سے رابطہ نہیں ہو سکا۔ براہِ کرم انٹرنیٹ کنکشن چیک کر کے دوبارہ کوشش کریں۔',
+    errGenericWrite: 'ڈیٹابیس اس تبدیلی کو محفوظ نہیں کر سکا۔ براہِ کرم تفصیلات چیک کر کے دوبارہ کوشش کریں۔',
+    // Two-level Event & Expense Hierarchy
+    eventCategory: 'ایونٹ کیٹیگری',
+    eventItemLabel: 'ایونٹ / تقریب',
+    eventNameOther: 'ایونٹ کا نام',
+    expenseCategoryLabel: 'اخراجات کی کیٹیگری',
+    expenseSubcategoryLabel: 'ذیلی کیٹیگری',
+    manualDescriptionLabel: 'تفصیل درج کریں',
+    copyFromHall: 'دوسرے ہال سے فہرست کاپی کریں',
+    copyListBtn: 'فہرست کاپی کریں',
+    deactivateInstead: 'اس کے بجائے غیر فعال کریں',
+    searchOptionsPlaceholder: 'تلاش کریں...',
+    noMatchingOptions: 'کوئی نتیجہ نہیں ملا',
+    allCategories: 'تمام کیٹیگریز',
+    allSubcategories: 'تمام ذیلی کیٹیگریز',
+    moveUp: 'اوپر لے جائیں',
+    moveDown: 'نیچے لے جائیں',
+    selectCategory: 'کیٹیگری منتخب کریں',
+    selectEvent: 'ایونٹ منتخب کریں',
+    selectSubcategory: 'ذیلی کیٹیگری منتخب کریں',
+    deactivate: 'غیر فعال کریں',
   },
 } as const;
 
@@ -512,34 +619,95 @@ export function translateFloor(
   }
 }
 
+export function isOtherOptionName(value: string | null | undefined): boolean {
+  const norm = (value || '').trim().toLowerCase();
+  return norm === 'other' || norm === 'دیگر' || norm === 'دیگر تقریب' || norm === 'دیگر اخراجات';
+}
+
+export function translateEventCategoryName(
+  categoryName: string,
+  lang: Language,
+  categories?: EventCategory[],
+  categoryId?: string | null
+): string {
+  const matched =
+    (categoryId ? (categories || []).find((c) => c.id === categoryId) : undefined) ||
+    (categories || []).find(
+      (c) =>
+        c.name_en.trim().toLowerCase() === (categoryName || '').trim().toLowerCase() ||
+        c.name_ur.trim().toLowerCase() === (categoryName || '').trim().toLowerCase()
+    );
+  if (matched) {
+    return pickLocalized(matched.name_en, matched.name_ur, lang);
+  }
+  if (!categoryName) return lang === 'ur' ? 'غیر زمرہ بند' : 'Uncategorized';
+  if (lang !== 'ur') return categoryName;
+  const fallbackMap: Record<string, string> = {
+    'wedding ceremony': 'شادی کی تقریبات',
+    'family & social': 'خاندانی و سماجی تقریبات',
+    corporate: 'کارپوریٹ تقریبات',
+    other: 'دیگر',
+    uncategorized: 'غیر زمرہ بند',
+  };
+  return fallbackMap[categoryName.trim().toLowerCase()] || categoryName;
+}
+
 export function translateEventType(
   eventTypeName: string,
   lang: Language,
-  eventTypes?: EventTypeItem[]
+  eventTypes?: EventTypeItem[],
+  eventOtherName?: string | null,
+  eventTypeId?: string | null
 ): string {
-  if (!eventTypeName) return '—';
-  const norm = eventTypeName.trim().toLowerCase();
-  const matched = (eventTypes || []).find(
-    (et) =>
-      et.name_en.trim().toLowerCase() === norm ||
-      et.name_ur.trim().toLowerCase() === norm
-  );
+  const matched =
+    (eventTypeId ? (eventTypes || []).find((et) => et.id === eventTypeId) : undefined) ||
+    (eventTypes || []).find(
+      (et) =>
+        et.name_en.trim().toLowerCase() === (eventTypeName || '').trim().toLowerCase() ||
+        et.name_ur.trim().toLowerCase() === (eventTypeName || '').trim().toLowerCase()
+    );
+  if ((isOtherOptionName(eventTypeName) || isOtherOptionName(matched?.name_en)) && (eventOtherName || '').trim()) {
+    return (eventOtherName || '').trim();
+  }
+  if (!eventTypeName && !matched) return '—';
   if (matched) {
     return pickLocalized(matched.name_en, matched.name_ur, lang);
   }
   if (lang !== 'ur') return eventTypeName;
+  const norm = eventTypeName.trim().toLowerCase();
   const fallbackMap: Record<string, string> = {
     baraat: 'بارات',
     mayun: 'مایوں',
-    walima: 'ولیمہ',
-    mehndi: 'مہندی',
+    'mangni (engagement)': 'منگنی',
+    mangni: 'منگنی',
+    nikah: 'نکاح',
     nikkah: 'نکاح',
+    mehendi: 'مہندی',
+    mehndi: 'مہندی',
+    walima: 'ولیمہ',
     birthday: 'سالگرہ',
+    aqiqah: 'عقیقہ',
+    anniversary: 'سالگرہِ شادی',
     conference: 'کانفرنس',
     seminar: 'سیمینار',
-    other: 'دیگر تقریب',
+    workshop: 'ورکشاپ',
+    other: 'دیگر',
   };
   return fallbackMap[norm] || eventTypeName;
+}
+
+export function formatBookingEventDisplay(
+  booking: Pick<Booking, 'event_type' | 'event_type_id' | 'event_other_name'>,
+  lang: Language,
+  eventTypes?: EventTypeItem[]
+): string {
+  return translateEventType(
+    booking.event_type,
+    lang,
+    eventTypes,
+    booking.event_other_name,
+    booking.event_type_id
+  );
 }
 
 export function translateChargeCategoryName(
@@ -592,7 +760,63 @@ export function translateExpenseCategoryName(
   if (lang === 'ur' && fallbackUr && fallbackUr.trim()) {
     return fallbackUr.trim();
   }
+  if (lang === 'ur' && categoryName) {
+    const fallbackMap: Record<string, string> = {
+      salaries: 'تنخواہیں',
+      'daily wages': 'یومیہ اجرت',
+      utilities: 'بجلی، گیس اور یوٹیلیٹیز',
+      cleaning: 'صفائی ستھرائی',
+      maintenance: 'مرمت و دیکھ بھال',
+      vendors: 'وینڈرز / ٹھیکیدار',
+      other: 'دیگر اخراجات',
+    };
+    const hit = fallbackMap[categoryName.trim().toLowerCase()];
+    if (hit) return hit;
+  }
   return categoryName || '—';
+}
+
+export function translateExpenseSubcategoryName(
+  subName: string | null | undefined,
+  lang: Language,
+  subcategories?: ExpenseSubcategory[],
+  subcategoryId?: string | null,
+  fallbackUr?: string | null
+): string {
+  const matched =
+    (subcategoryId ? (subcategories || []).find((s) => s.id === subcategoryId) : undefined) ||
+    (subName
+      ? (subcategories || []).find(
+          (s) =>
+            s.name_en.trim().toLowerCase() === subName.trim().toLowerCase() ||
+            s.name_ur.trim().toLowerCase() === subName.trim().toLowerCase()
+        )
+      : undefined);
+  if (matched) {
+    return pickLocalized(matched.name_en, matched.name_ur, lang);
+  }
+  if (lang === 'ur' && fallbackUr && fallbackUr.trim()) {
+    return fallbackUr.trim();
+  }
+  if (lang === 'ur' && subName) {
+    const fallbackMap: Record<string, string> = {
+      'monthly salaries': 'ماہانہ تنخواہیں',
+      advances: 'ایڈوانس تنخواہ',
+      waiters: 'ویٹرز',
+      helpers: 'ہیلپرز',
+      electricity: 'بجلی',
+      gas: 'گیس',
+      water: 'پانی',
+      internet: 'انٹرنیٹ',
+      sound: 'ساؤنڈ سسٹم',
+      decoration: 'ڈیکوریشن',
+      florist: 'پھولوں کا خرچ',
+      other: 'دیگر',
+    };
+    const hit = fallbackMap[subName.trim().toLowerCase()];
+    if (hit) return hit;
+  }
+  return (subName || '').trim();
 }
 
 export function translateBookingItemName(

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { Ban, CreditCard, Edit3, FileText, Plus, Search, Trash2 } from 'lucide-react';
+import { Ban, CreditCard, Edit3, FileText, Loader2, Plus, Search, Trash2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { tr, translateEventType, translateFloor, translateStatus } from '../i18n/translations';
+import { formatBookingEventDisplay, tr, translateFloor, translateStatus } from '../i18n/translations';
 import { Booking, BookingStatus } from '../types';
 import {
   calculateBookingFinancials,
@@ -29,6 +29,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | BookingStatus>('ALL');
   const [cancellingBooking, setCancellingBooking] = useState<Booking | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const canModify = can('bookings', 'edit');
   const canDelete = can('bookings', 'delete');
@@ -146,7 +147,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                   db.payments,
                   db.expenses
                 );
-                const eventLabel = translateEventType(bk.event_type, lang, db.eventTypes);
+                const eventLabel = formatBookingEventDisplay(bk, lang, db.eventTypes);
                 const floorText = bk.floors
                   .map((f) => translateFloor(f, lang, db.floors))
                   .join(isUr ? '، ' : ', ');
@@ -290,11 +291,23 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                         {canDelete && (
                           <button
                             type="button"
-                            onClick={() => softDeleteBooking(bk.id)}
+                            disabled={deletingId === bk.id}
+                            onClick={async () => {
+                              setDeletingId(bk.id);
+                              try {
+                                await softDeleteBooking(bk.id);
+                              } finally {
+                                setDeletingId(null);
+                              }
+                            }}
                             title={tr('delete', lang)}
-                            className="p-2 rounded-lg border border-slate-800 bg-slate-900/70 text-slate-400 hover:text-rose-400 hover:border-rose-500/40"
+                            className="p-2 rounded-lg border border-slate-800 bg-slate-900/70 text-slate-400 hover:text-rose-400 hover:border-rose-500/40 disabled:opacity-50"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            {deletingId === bk.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-3.5 h-3.5" />
+                            )}
                           </button>
                         )}
                       </div>

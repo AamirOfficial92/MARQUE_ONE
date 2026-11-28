@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { CheckCircle2, Clock, ShieldCheck, XCircle } from 'lucide-react';
+import { CheckCircle2, Clock, Loader2, ShieldCheck, XCircle } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import {
   translateApprovalStatus,
@@ -14,6 +14,7 @@ export const ApprovalsView: React.FC = () => {
   const [tab, setTab] = useState<'pending' | 'all'>('pending');
   const [notesById, setNotesById] = useState<Record<string, string>>({});
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
   const isUr = lang === 'ur';
 
   const canReview =
@@ -87,19 +88,25 @@ export const ApprovalsView: React.FC = () => {
   };
 
   const handleDecision = async (req: ApprovalRequest, decision: 'approved' | 'rejected') => {
+    if (busyKey) return;
     setFeedback(null);
-    const note = (notesById[req.id] || '').trim();
-    const res = await reviewApprovalRequest(req.id, decision, note);
-    if (!res.ok) {
-      setFeedback({ ok: false, text: res.error || (isUr ? 'منظوری پر کارروائی نہیں ہو سکی۔' : 'Could not process approval.') });
-      return;
+    setBusyKey(`${req.id}:${decision}`);
+    try {
+      const note = (notesById[req.id] || '').trim();
+      const res = await reviewApprovalRequest(req.id, decision, note);
+      if (!res.ok) {
+        setFeedback({ ok: false, text: res.error || (isUr ? 'منظوری پر کارروائی نہیں ہو سکی۔' : 'Could not process approval.') });
+        return;
+      }
+      setFeedback({
+        ok: true,
+        text: isUr
+          ? `${req.booking_code} کے لیے ${translateApprovalType(req.request_type, lang)} کی درخواست ${translateApprovalStatus(decision, lang)} قرار دی گئی۔`
+          : `${translateApprovalType(req.request_type, lang)} request for ${req.booking_code} ${decision}.`,
+      });
+    } finally {
+      setBusyKey(null);
     }
-    setFeedback({
-      ok: true,
-      text: isUr
-        ? `${req.booking_code} کے لیے ${translateApprovalType(req.request_type, lang)} کی درخواست ${translateApprovalStatus(decision, lang)} قرار دی گئی۔`
-        : `${translateApprovalType(req.request_type, lang)} request for ${req.booking_code} ${decision}.`,
-    });
   };
 
   return (
@@ -210,18 +217,28 @@ export const ApprovalsView: React.FC = () => {
                 />
                 <button
                   type="button"
+                  disabled={busyKey?.startsWith(`${req.id}:`)}
                   onClick={() => handleDecision(req, 'rejected')}
-                  className="px-3.5 py-2 rounded-xl border border-rose-500/40 bg-rose-500/10 text-rose-300 text-xs font-semibold flex items-center gap-1"
+                  className="px-3.5 py-2 rounded-xl border border-rose-500/40 bg-rose-500/10 text-rose-300 text-xs font-semibold flex items-center gap-1 disabled:opacity-50"
                 >
-                  <XCircle className="w-3.5 h-3.5" />
+                  {busyKey === `${req.id}:rejected` ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <XCircle className="w-3.5 h-3.5" />
+                  )}
                   <span>{isUr ? 'مسترد کریں' : 'Reject'}</span>
                 </button>
                 <button
                   type="button"
+                  disabled={busyKey?.startsWith(`${req.id}:`)}
                   onClick={() => handleDecision(req, 'approved')}
-                  className="px-3.5 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold flex items-center gap-1"
+                  className="px-3.5 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold flex items-center gap-1 disabled:opacity-50"
                 >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  {busyKey === `${req.id}:approved` ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                  )}
                   <span>{isUr ? 'منظور اور لاگو کریں' : 'Approve & Apply'}</span>
                 </button>
               </div>

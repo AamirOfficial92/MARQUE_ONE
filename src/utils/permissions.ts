@@ -17,6 +17,9 @@ export const PERMISSION_SCREEN_KEYS = [
   'reminders',
   'users',
   'settings',
+  'halls',
+  'event_categories',
+  'expense_categories',
   'recycle_bin',
   'audit_log',
   'backup_import',
@@ -49,6 +52,9 @@ export const SENSITIVE_SCREEN_KEYS = new Set<PermissionScreenKey>([
   'recycle_bin',
   'users',
   'settings',
+  'halls',
+  'event_categories',
+  'expense_categories',
 ]);
 
 export const SCREEN_DEFINITIONS: ScreenDefinition[] = [
@@ -68,6 +74,9 @@ export const SCREEN_DEFINITIONS: ScreenDefinition[] = [
   { key: 'reports', labelEn: 'Reports (Income, Expense, Profit)', labelUr: 'رپورٹس (آمدن، خرچ، منافع)', sensitive: true, group: 'finance' },
   { key: 'users', labelEn: 'Users', labelUr: 'صارفین', sensitive: true, group: 'admin' },
   { key: 'settings', labelEn: 'Settings', labelUr: 'ترتیبات', sensitive: true, group: 'admin' },
+  { key: 'halls', labelEn: 'Halls & Hall Profile', labelUr: 'ہالز اور ہال پروفائل', sensitive: true, group: 'admin' },
+  { key: 'event_categories', labelEn: 'Event Categories', labelUr: 'تقریبات کی کیٹیگریز', sensitive: true, group: 'admin' },
+  { key: 'expense_categories', labelEn: 'Expense Categories', labelUr: 'اخراجات کی کیٹیگریز', sensitive: true, group: 'admin' },
   { key: 'recycle_bin', labelEn: 'Recycle Bin', labelUr: 'ری سائیکل بن', sensitive: true, group: 'admin' },
   { key: 'audit_log', labelEn: 'Audit Log', labelUr: 'آڈٹ لاگ', sensitive: true, group: 'admin' },
   { key: 'backup_import', labelEn: 'Backup & Import', labelUr: 'بیک اپ اور امپورٹ', sensitive: false, group: 'admin' },
@@ -92,6 +101,7 @@ const ADMIN_EDIT_SCREENS = new Set<PermissionScreenKey>([
   'reminders',
   'users',
   'settings',
+  'halls',
   'backup_import',
 ]);
 

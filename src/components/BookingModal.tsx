@@ -5,6 +5,7 @@ import {
   CalendarClock,
   Check,
   CheckCircle2,
+  Loader2,
   Plus,
   ShieldAlert,
   Trash2,
@@ -12,16 +13,19 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import {
+  isOtherOptionName,
   pickLocalized,
   tr,
   translateBookingItemName,
   translateChargeCategoryName,
+  translateEventCategoryName,
   translateExpenseCategoryName,
   translateFloor,
   translatePaymentMode,
   translateStatus,
   translateUnitLabel,
 } from '../i18n/translations';
+import { SearchableSelect } from './SearchableSelect';
 import {
   Booking,
   BookingItem,
@@ -98,13 +102,49 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const initialFloors = booking?.floors || (['First'] as FloorName[]);
   const initialSuggested = getSuggestedHallRent(initialFloors, initialDateVal, db.settings);
 
+  const initialEventMatch = useMemo(() => {
+    const allEvs = db.eventTypes.filter((et) => !et.deleted_at);
+    const allCats = db.eventCategories.filter((c) => !c.deleted_at);
+    if (booking) {
+      const byId = booking.event_type_id ? allEvs.find((e) => e.id === booking.event_type_id) : undefined;
+      const byName = !byId
+        ? allEvs.find((e) => e.name_en.trim().toLowerCase() === (booking.event_type || '').trim().toLowerCase())
+        : undefined;
+      const ev = byId || byName;
+      const catId = booking.event_category_id || ev?.category_id || allCats[0]?.id || '';
+      return {
+        categoryId: catId,
+        eventTypeId: ev?.id || '',
+        eventTypeName: ev?.name_en || booking.event_type || 'Other',
+        eventOtherName: booking.event_other_name || '',
+      };
+    }
+    const defaultEv =
+      allEvs.find((e) => e.is_active !== false && e.name_en.toLowerCase() === 'baraat') ||
+      allEvs.find((e) => e.is_active !== false) ||
+      allEvs[0];
+    const defaultCat =
+      (defaultEv?.category_id && allCats.find((c) => c.id === defaultEv.category_id)) ||
+      allCats.find((c) => c.is_active !== false) ||
+      allCats[0];
+    return {
+      categoryId: defaultCat?.id || '',
+      eventTypeId: defaultEv?.id || '',
+      eventTypeName: defaultEv?.name_en || 'Baraat',
+      eventOtherName: '',
+    };
+  }, [booking, db.eventTypes, db.eventCategories]);
+
   const [customerId, setCustomerId] = useState<string | null>(booking?.customer_id || null);
   const [customerName, setCustomerName] = useState(booking?.customer_name || '');
   const [customerAddress, setCustomerAddress] = useState(booking?.customer_address || '');
   const [customerPhone, setCustomerPhone] = useState(booking?.customer_phone || '');
   const [customerNic, setCustomerNic] = useState(booking?.customer_nic || '');
   const [customerEmail, setCustomerEmail] = useState(booking?.customer_email || '');
-  const [eventType, setEventType] = useState(booking?.event_type || 'Baraat');
+  const [eventCategoryId, setEventCategoryId] = useState<string>(initialEventMatch.categoryId);
+  const [eventTypeId, setEventTypeId] = useState<string>(initialEventMatch.eventTypeId);
+  const [eventType, setEventType] = useState<string>(initialEventMatch.eventTypeName);
+  const [eventOtherName, setEventOtherName] = useState<string>(initialEventMatch.eventOtherName);
   const [eventDate, setEventDate] = useState(initialDateVal);
   const [startTime, setStartTime] = useState(booking?.start_time || '20:00');
   const [endTime, setEndTime] = useState(booking?.end_time || '00:00');
@@ -187,6 +227,40 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     () => getSuggestedHallRent(floors, eventDate, db.settings),
     [floors, eventDate, db.settings]
   );
+
+  const selectableEventCategories = useMemo(() => {
+    return db.eventCategories
+      .filter((c) => !c.deleted_at && (c.is_active !== false || c.id === eventCategoryId))
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  }, [db.eventCategories, eventCategoryId]);
+
+  const selectableEvents = useMemo(() => {
+    const list = db.eventTypes.filter(
+      (et) =>
+        !et.deleted_at &&
+        (et.is_active !== false || et.id === eventTypeId) &&
+        (!eventCategoryId || et.category_id === eventCategoryId)
+    );
+    return list.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  }, [db.eventTypes, eventCategoryId, eventTypeId]);
+
+  const selectedEventCategory = useMemo(
+    () => db.eventCategories.find((c) => c.id === eventCategoryId),
+    [db.eventCategories, eventCategoryId]
+  );
+
+  const selectedEventObj = useMemo(
+    () => db.eventTypes.find((e) => e.id === eventTypeId),
+    [db.eventTypes, eventTypeId]
+  );
+
+  const isOtherEventSelected = useMemo(() => {
+    return (
+      isOtherOptionName(selectedEventCategory?.name_en) ||
+      isOtherOptionName(selectedEventObj?.name_en) ||
+      isOtherOptionName(eventType)
+    );
+  }, [selectedEventCategory, selectedEventObj, eventType]);
 
   useEffect(() => {
     if (!booking && !rentEditedManually) {
@@ -401,6 +475,14 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       );
       return;
     }
+    if (isOtherEventSelected && !eventOtherName.trim()) {
+      setValidationError(
+        isUr
+          ? 'جب آپ "دیگر" منتخب کریں تو ایونٹ کا نام درج کرنا لازمی ہے۔'
+          : 'Event name is required when "Other" is selected.'
+      );
+      return;
+    }
     if (liveConflict) {
       const floorNames = liveConflict.floors
         .map((f) => translateFloor(f, lang, db.floors))
@@ -439,7 +521,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         customer_phone: customerPhone.trim(),
         customer_nic: customerNic.trim(),
         customer_email: customerEmail.trim(),
-        event_type: eventType,
+        event_category_id: eventCategoryId || null,
+        event_type_id: eventTypeId || null,
+        event_type: isOtherEventSelected ? 'Other' : selectedEventObj?.name_en || eventType,
+        event_other_name: isOtherEventSelected ? eventOtherName.trim() : '',
         event_date: eventDate,
         start_time: startTime,
         end_time: endTime,
@@ -496,14 +581,19 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
     if (!res.ok) {
       setSaving(false);
-      setValidationError(`${tr('conflictPrefix', lang)} ${res.error}`);
+      const errText = res.error || '';
+      const isConflict =
+        errText.includes('cleaning buffer') || errText.includes('صفائی وقفہ');
+      setValidationError(
+        isConflict ? `${tr('conflictPrefix', lang)} ${errText}` : errText
+      );
       return;
     }
 
     const queuedApprovals: string[] = [];
     if (res.booking) {
       if (discountRequestedByManager) {
-        await submitApprovalRequest({
+        const apRes = await submitApprovalRequest({
           booking_id: res.booking.id,
           booking_code: res.booking.booking_code,
           customer_name: res.booking.customer_name,
@@ -518,11 +608,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             discountReason.trim() ||
             (isUr ? 'مینیجر کی جانب سے خصوصی رعایت کی درخواست' : 'Manager requested special discount'),
         });
-        queuedApprovals.push(`${tr('specialDiscount', lang)} (${formatPKR(discountAmount)})`);
+        if (apRes.ok) {
+          queuedApprovals.push(`${tr('specialDiscount', lang)} (${formatPKR(discountAmount)})`);
+        }
       }
 
       if (lateOverrideRequestedByManager) {
-        await submitApprovalRequest({
+        const apRes = await submitApprovalRequest({
           booking_id: res.booking.id,
           booking_code: res.booking.booking_code,
           customer_name: res.booking.customer_name,
@@ -536,15 +628,17 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             ? 'مینیجر کی جانب سے تاخیر چارج میں تبدیلی کی درخواست'
             : 'Manager requested late charge override',
         });
-        queuedApprovals.push(
-          `${isUr ? 'تاخیر چارج تبدیلی' : 'Late Charge Override'} (${formatPKR(
-            effectiveLateCharge
-          )})`
-        );
+        if (apRes.ok) {
+          queuedApprovals.push(
+            `${isUr ? 'تاخیر چارج تبدیلی' : 'Late Charge Override'} (${formatPKR(
+              effectiveLateCharge
+            )})`
+          );
+        }
       }
 
       if (rescheduleFeeRequestedByManager) {
-        await submitApprovalRequest({
+        const apRes = await submitApprovalRequest({
           booking_id: res.booking.id,
           booking_code: res.booking.booking_code,
           customer_name: res.booking.customer_name,
@@ -561,9 +655,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             rescheduleReason.trim() ||
             (isUr ? 'تاریخ تبدیلی فیس کی درخواست' : 'Reschedule fee request'),
         });
-        queuedApprovals.push(
-          `${tr('rescheduleFeeLine', lang)} (${formatPKR(pendingRescheduleFee)})`
-        );
+        if (apRes.ok) {
+          queuedApprovals.push(
+            `${tr('rescheduleFeeLine', lang)} (${formatPKR(pendingRescheduleFee)})`
+          );
+        }
       }
     }
 
@@ -837,23 +933,102 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-xs text-slate-300 mb-1">
-                    {tr('eventType', lang)}
+                    {tr('eventCategory', lang)} *
                   </label>
-                  <select
+                  <SearchableSelect
                     disabled={readOnly}
-                    value={eventType}
-                    onChange={(e) => setEventType(e.target.value)}
-                    className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
-                  >
-                    {db.eventTypes
-                      .filter((et) => !et.deleted_at)
-                      .map((et) => (
-                        <option key={et.id} value={et.name_en}>
-                          {pickLocalized(et.name_en, et.name_ur, lang)}
-                        </option>
-                      ))}
-                  </select>
+                    required
+                    value={eventCategoryId}
+                    placeholder={tr('selectCategory', lang)}
+                    searchPlaceholder={tr('searchOptionsPlaceholder', lang)}
+                    emptyText={tr('noMatchingOptions', lang)}
+                    options={selectableEventCategories.map((cat) => ({
+                      value: cat.id,
+                      label: translateEventCategoryName(
+                        cat.name_en,
+                        lang,
+                        db.eventCategories,
+                        cat.id
+                      ),
+                    }))}
+                    onChange={(nextCatId) => {
+                      setEventCategoryId(nextCatId);
+                      const nextCat = db.eventCategories.find((c) => c.id === nextCatId);
+                      const childEvs = db.eventTypes
+                        .filter(
+                          (et) =>
+                            !et.deleted_at &&
+                            et.is_active !== false &&
+                            et.category_id === nextCatId
+                        )
+                        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+                      if (childEvs.length > 0) {
+                        setEventTypeId(childEvs[0].id);
+                        setEventType(childEvs[0].name_en);
+                        if (!isOtherOptionName(childEvs[0].name_en) && !isOtherOptionName(nextCat?.name_en)) {
+                          setEventOtherName('');
+                        }
+                      } else {
+                        setEventTypeId('');
+                        setEventType(nextCat?.name_en || 'Other');
+                      }
+                    }}
+                  />
                 </div>
+
+                <div>
+                  <label className="block text-xs text-slate-300 mb-1">
+                    {tr('eventItemLabel', lang)} *
+                  </label>
+                  <SearchableSelect
+                    disabled={readOnly}
+                    required={selectableEvents.length > 0}
+                    value={eventTypeId}
+                    placeholder={
+                      selectableEvents.length === 0
+                        ? isOtherOptionName(selectedEventCategory?.name_en)
+                          ? pickLocalized('Other', 'دیگر', lang)
+                          : tr('noMatchingOptions', lang)
+                        : tr('selectEvent', lang)
+                    }
+                    searchPlaceholder={tr('searchOptionsPlaceholder', lang)}
+                    emptyText={tr('noMatchingOptions', lang)}
+                    options={selectableEvents.map((et) => ({
+                      value: et.id,
+                      label: pickLocalized(et.name_en, et.name_ur, lang),
+                      dotColor: et.color_hex,
+                    }))}
+                    onChange={(nextEvId) => {
+                      setEventTypeId(nextEvId);
+                      const ev = db.eventTypes.find((e) => e.id === nextEvId);
+                      if (ev) {
+                        setEventType(ev.name_en);
+                        if (!isOtherOptionName(ev.name_en) && !isOtherOptionName(selectedEventCategory?.name_en)) {
+                          setEventOtherName('');
+                        }
+                      }
+                    }}
+                  />
+                </div>
+
+                {isOtherEventSelected && (
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs text-amber-300 font-semibold mb-1">
+                      {tr('eventNameOther', lang)} *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      disabled={readOnly}
+                      value={eventOtherName}
+                      onChange={(e) => setEventOtherName(e.target.value)}
+                      placeholder={
+                        isUr ? 'مثال: محفلِ میلاد، رسمِ حنا، الوداعی تقریب' : 'e.g. Qawali Night, Farewell Dinner, Graduation'
+                      }
+                      className="w-full bg-slate-950/70 border border-amber-500/50 rounded-xl px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
+                    />
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-xs text-slate-300 mb-1">
@@ -1862,9 +2037,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 <button
                   type="submit"
                   disabled={saving || Boolean(liveConflict)}
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold hover:opacity-95 disabled:opacity-40"
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold hover:opacity-95 disabled:opacity-40 inline-flex items-center gap-1.5"
                 >
-                  {saving ? tr('saving', lang) : tr('save', lang)}
+                  {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{saving ? tr('saving', lang) : tr('save', lang)}</span>
                 </button>
               )}
             </div>

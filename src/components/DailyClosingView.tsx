@@ -8,6 +8,7 @@ import {
   ChevronUp,
   ClipboardCheck,
   Landmark,
+  Loader2,
   Send,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
@@ -16,7 +17,7 @@ import { DailyClosing, DailyClosingBookingBreakdown } from '../types';
 import { formatDateDisplay, formatPKR, todayISO } from '../utils/formatters';
 
 export const DailyClosingView: React.FC = () => {
-  const { db, lang, currentUser, can, saveDailyClosing, reviewDailyClosing } = useApp();
+  const { db, activeHall, lang, currentUser, can, saveDailyClosing, reviewDailyClosing } = useApp();
   const [closingDate, setClosingDate] = useState(todayISO());
   const [managerNotes, setManagerNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -26,9 +27,10 @@ export const DailyClosingView: React.FC = () => {
   const [discrepancyInput, setDiscrepancyInput] = useState<number>(0);
   const [adminReviewNotes, setAdminReviewNotes] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [reviewBusy, setReviewBusy] = useState<'received' | 'flagged' | null>(null);
 
   const isUr = lang === 'ur';
-  const hallLabel = pickLocalized(db.settings.hall_name, db.settings.hall_name_ur, lang);
+  const hallLabel = pickLocalized(activeHall.name, activeHall.name_ur, lang);
 
   const canSubmitClosing = can('daily_closing', 'edit');
   const canReview =
@@ -122,29 +124,35 @@ export const DailyClosingView: React.FC = () => {
   };
 
   const handleReviewDecision = async (c: DailyClosing, decision: 'received' | 'flagged') => {
+    if (reviewBusy) return;
     setFeedback(null);
-    const res = await reviewDailyClosing(
-      c.id,
-      decision,
-      decision === 'flagged' ? Math.max(0, Number(discrepancyInput) || 0) : 0,
-      adminReviewNotes.trim()
-    );
-    if (!res.ok) {
-      setFeedback({ ok: false, text: res.error || (isUr ? 'جائزہ محفوظ نہیں ہو سکا۔' : 'Could not save review.') });
-      return;
+    setReviewBusy(decision);
+    try {
+      const res = await reviewDailyClosing(
+        c.id,
+        decision,
+        decision === 'flagged' ? Math.max(0, Number(discrepancyInput) || 0) : 0,
+        adminReviewNotes.trim()
+      );
+      if (!res.ok) {
+        setFeedback({ ok: false, text: res.error || (isUr ? 'جائزہ محفوظ نہیں ہو سکا۔' : 'Could not save review.') });
+        return;
+      }
+      setReviewingId(null);
+      setFeedback({
+        ok: true,
+        text:
+          decision === 'received'
+            ? isUr
+              ? `${formatDateDisplay(c.closing_date, lang)} کی کلوزنگ وصول شدہ قرار دے دی گئی۔`
+              : `Closing for ${formatDateDisplay(c.closing_date, lang)} marked as Received.`
+            : isUr
+            ? `${formatDateDisplay(c.closing_date, lang)} کی کلوزنگ پر فرق کا نوٹ درج کر دیا گیا۔`
+            : `Closing for ${formatDateDisplay(c.closing_date, lang)} flagged with discrepancy note.`,
+      });
+    } finally {
+      setReviewBusy(null);
     }
-    setReviewingId(null);
-    setFeedback({
-      ok: true,
-      text:
-        decision === 'received'
-          ? isUr
-            ? `${formatDateDisplay(c.closing_date, lang)} کی کلوزنگ وصول شدہ قرار دے دی گئی۔`
-            : `Closing for ${formatDateDisplay(c.closing_date, lang)} marked as Received.`
-          : isUr
-          ? `${formatDateDisplay(c.closing_date, lang)} کی کلوزنگ پر فرق کا نوٹ درج کر دیا گیا۔`
-          : `Closing for ${formatDateDisplay(c.closing_date, lang)} flagged with discrepancy note.`,
-    });
   };
 
   const statusBadge = (st: DailyClosing['status']) => {
@@ -307,9 +315,15 @@ export const DailyClosingView: React.FC = () => {
               disabled={submitting}
               className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap disabled:opacity-50"
             >
-              <Send className="w-3.5 h-3.5" />
+              {submitting ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Send className="w-3.5 h-3.5" />
+              )}
               <span>
-                {existingForDate
+                {submitting
+                  ? tr('saving', lang)
+                  : existingForDate
                   ? isUr
                     ? 'روزانہ کلوزنگ دوبارہ جمع کروائیں'
                     : 'Resubmit Daily Closing'
@@ -475,18 +489,28 @@ export const DailyClosingView: React.FC = () => {
                     <div className="flex flex-wrap justify-end gap-2">
                       <button
                         type="button"
+                        disabled={reviewBusy !== null}
                         onClick={() => handleReviewDecision(c, 'flagged')}
-                        className="px-3.5 py-2 rounded-xl border border-rose-500/40 bg-rose-500/10 text-rose-300 font-semibold flex items-center gap-1.5"
+                        className="px-3.5 py-2 rounded-xl border border-rose-500/40 bg-rose-500/10 text-rose-300 font-semibold flex items-center gap-1.5 disabled:opacity-50"
                       >
-                        <AlertTriangle className="w-3.5 h-3.5" />
+                        {reviewBusy === 'flagged' ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <AlertTriangle className="w-3.5 h-3.5" />
+                        )}
                         <span>{isUr ? 'فرق کی نشاندہی کریں' : 'Flag Difference'}</span>
                       </button>
                       <button
                         type="button"
+                        disabled={reviewBusy !== null}
                         onClick={() => handleReviewDecision(c, 'received')}
-                        className="px-3.5 py-2 rounded-xl bg-emerald-600 text-white font-semibold flex items-center gap-1.5"
+                        className="px-3.5 py-2 rounded-xl bg-emerald-600 text-white font-semibold flex items-center gap-1.5 disabled:opacity-50"
                       >
-                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        {reviewBusy === 'received' ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                        )}
                         <span>{isUr ? 'وصول شدہ نشان زد کریں' : 'Mark as Received'}</span>
                       </button>
                     </div>

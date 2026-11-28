@@ -2,9 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import {
+  formatBookingEventDisplay,
   getWeekdayNames,
   pickLocalized,
-  translateEventType,
   translateFloor,
   translateStatus,
 } from '../i18n/translations';
@@ -46,8 +46,10 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       .sort((a, b) => a.start_time.localeCompare(b.start_time));
   }, [db.bookings, floorFilter]);
 
-  const getEventColor = (eventType: string) => {
-    return db.eventTypes.find((e) => e.name_en === eventType)?.color_hex || '#06B6D4';
+  const getEventColor = (bk: Booking) => {
+    const byId = bk.event_type_id ? db.eventTypes.find((e) => e.id === bk.event_type_id) : undefined;
+    const byName = !byId ? db.eventTypes.find((e) => e.name_en === bk.event_type) : undefined;
+    return (byId || byName)?.color_hex || '#06B6D4';
   };
 
   const parsedCursor = new Date(`${cursorDate}T00:00:00`);
@@ -179,7 +181,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       {/* Event Type Color Key */}
       <div className="flex flex-wrap items-center gap-4 px-1 text-xs text-slate-400">
         {db.eventTypes
-          .filter((e) => !e.deleted_at)
+          .filter((e) => !e.deleted_at && e.is_active !== false)
           .map((et) => (
             <span key={et.id} className="flex items-center gap-1.5">
               <span
@@ -241,7 +243,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                   </div>
                   <div className="space-y-1">
                     {dayBookings.map((bk) => {
-                      const col = getEventColor(bk.event_type);
+                      const col = getEventColor(bk);
                       const floorsStr = bk.floors
                         .map((f) => translateFloor(f, lang, db.floors))
                         .join(isUr ? '، ' : ', ');
@@ -303,7 +305,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                 </div>
                 <div className="space-y-2 flex-1">
                   {dayBookings.map((bk) => {
-                    const col = getEventColor(bk.event_type);
+                    const col = getEventColor(bk);
                     return (
                       <button
                         key={bk.id}
@@ -313,7 +315,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                         style={{ borderColor: `${col}70`, backgroundColor: `${col}1F` }}
                       >
                         <div className="text-xs font-bold text-white truncate">
-                          {translateEventType(bk.event_type, lang, db.eventTypes)}
+                          {formatBookingEventDisplay(bk, lang, db.eventTypes)}
                         </div>
                         <div className="text-xs text-slate-200 truncate mt-0.5">
                           {bk.customer_name}
@@ -376,7 +378,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                     {translateFloor(fl, lang, db.floors)}
                   </div>
                   {floorBookings.map((bk) => {
-                    const col = getEventColor(bk.event_type);
+                    const col = getEventColor(bk);
                     return (
                       <button
                         key={bk.id}
@@ -390,7 +392,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                         </div>
                         <div className="text-xs text-slate-200 mt-0.5">{bk.customer_name}</div>
                         <div className="text-[11px] text-slate-300 mt-1">
-                          {translateEventType(bk.event_type, lang, db.eventTypes)} ·{' '}
+                          {formatBookingEventDisplay(bk, lang, db.eventTypes)} ·{' '}
                           <span className="tabular-nums">
                             {formatTime12h(bk.start_time, lang)}–{formatTime12h(bk.end_time, lang)}
                           </span>

@@ -430,6 +430,53 @@ export function buildWhatsAppLink(phone: string, message: string): string {
   return `https://wa.me/${wa}?text=${encodeURIComponent(message)}`;
 }
 
+/**
+ * Accepts Pakistani mobile (03XX-XXXXXXX / +923XXXXXXXXX) or Pakistani landline (021-34567890 / 042-...)
+ */
+export function isValidHallPhone(phone: string): boolean {
+  const cleaned = phone.replace(/[\s\-()]/g, '');
+  if (!cleaned) return false;
+  return /^(?:\+92|92|0)(?:3[0-9]{9}|[1-9][0-9]{7,10})$/.test(cleaned);
+}
+
+/**
+ * Strict international format without '+' for WhatsApp wa.me links, e.g. 923001234567
+ */
+export function isValidIntlWhatsApp(wa: string): boolean {
+  const cleaned = wa.replace(/\D/g, '');
+  return /^92[0-9]{9,11}$/.test(cleaned);
+}
+
+export function normalizeIntlWhatsAppInput(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  if (digits.startsWith('0') && digits.length >= 10) {
+    return `92${digits.slice(1, 12)}`;
+  }
+  return digits.slice(0, 13);
+}
+
+export function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
+}
+
+export function isValidHttpUrl(url: string): boolean {
+  const trimmed = url.trim();
+  if (!trimmed) return true;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+export function buildWhatsAppDirectUrl(intlOrLocalPhone: string, message?: string): string {
+  const digits = intlOrLocalPhone.replace(/\D/g, '');
+  const wa = digits.startsWith('0') ? `92${digits.slice(1)}` : digits;
+  if (!wa) return '';
+  return message ? `https://wa.me/${wa}?text=${encodeURIComponent(message)}` : `https://wa.me/${wa}`;
+}
+
 export function buildMailtoLink(email: string, subject: string, body: string): string {
   return `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }

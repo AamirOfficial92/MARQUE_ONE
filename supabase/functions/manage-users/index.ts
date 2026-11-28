@@ -1,26 +1,15 @@
 // Supabase Edge Function: manage-users
-// Deploy with: supabase functions deploy manage-users
-// Secrets required (available by default in Supabase Edge Functions):
-//   SUPABASE_URL
-//   SUPABASE_ANON_KEY
-//   SUPABASE_SERVICE_ROLE_KEY (NEVER exposed to frontend)
+// Deploy via Supabase Dashboard Edge Functions Editor (or CLI) with "Verify JWT" turned OFF.
+// Uses only Deno.env secrets automatically injected by Supabase:
+//   SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'npm:@supabase/supabase-js@2';
 
-function buildCorsHeaders(req: Request): Record<string, string> {
-  const origin = req.headers.get('Origin');
-  const allowedOrigin =
-    origin && (origin.startsWith('https://') || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:'))
-      ? origin
-      : 'null';
-
-  return {
-    'Access-Control-Allow-Origin': allowedOrigin,
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    Vary: 'Origin',
-  };
-}
+const corsHeaders: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
 
 type UserRole = 'super_admin' | 'admin' | 'manager';
 
@@ -43,6 +32,9 @@ const ALL_SCREEN_KEYS = [
   'reminders',
   'users',
   'settings',
+  'halls',
+  'event_categories',
+  'expense_categories',
   'recycle_bin',
   'audit_log',
   'backup_import',
@@ -58,7 +50,13 @@ interface PermissionEntryInput {
 }
 
 interface ManageUsersPayload {
-  action: 'create_user' | 'update_user' | 'update_permissions' | 'reset_password' | 'toggle_active';
+  action:
+    | 'create_user'
+    | 'update_user'
+    | 'reset_password'
+    | 'set_permissions'
+    | 'deactivate_user'
+    | 'list_users';
   userId?: string;
   email?: string;
   password?: string;
@@ -68,6 +66,13 @@ interface ManageUsersPayload {
   hall_id?: string | null;
   is_active?: boolean;
   permissions?: PermissionEntryInput[];
+}
+
+function jsonResponse(body: Record<string, unknown>, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
 }
 
 function getAllFalsePermissions(): Record<ScreenKey, PermissionEntryInput> {
@@ -96,6 +101,7 @@ function getDefaultPermissionsForRole(role: UserRole): Record<ScreenKey, Permiss
     'reminders',
     'users',
     'settings',
+    'halls',
     'backup_import',
   ]);
   const managerEditScreens = new Set<string>([
@@ -174,20 +180,13 @@ function normalizeDbPermissionRows(
   return map;
 }
 
-Deno.serve(async (req) => {
-  const corsHeaders = buildCorsHeaders(req);
-  const jsonResponse = (body: unknown, status = 200) =>
-    new Response(JSON.stringify(body), {
-      status,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-
+Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { status: 200, headers: corsHeaders });
   }
 
   if (req.method !== 'POST') {
-    return jsonResponse({ ok: false, error: 'Method not allowed' }, 405);
+    return jsonResponse({ ok: false, error: 'Method not allowed. Use POST.' }, 405);
   }
 
   try {
@@ -197,12 +196,13 @@ Deno.serve(async (req) => {
 
     if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
       return jsonResponse(
-        { ok: false, error: 'Server environment is missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.' },
+        { ok: false, error: 'Server environment is missing SUPABASE_URL, SUPABASE_ANON_KEY, or SUPABASE_SERVICE_ROLE_KEY.' },
         500
       );
     }
 
-    const authHeader = req.headers.get('Authorization') || '';
+    // Verify caller JWT explicitly because gateway "Verify JWT" is OFF
+    const authHeader = req.headers.get('Authorization') || req.headers.get('authorization') || '';
     const token = authHeader.replace(/^Bearer\s+/i, '').trim();
     if (!token) {
       return jsonResponse({ ok: false, error: 'Missing Authorization bearer token.' }, 401);
@@ -210,10 +210,12 @@ Deno.serve(async (req) => {
 
     const callerClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { autoRefreshToken: false, persistSession: false },
     });
+
     const { data: authData, error: authErr } = await callerClient.auth.getUser();
     if (authErr || !authData?.user) {
-      return jsonResponse({ ok: false, error: 'Invalid or expired session token.' }, 401);
+      return jsonResponse({ ok: false, error: 'Invalid or expired authentication token.' }, 401);
     }
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
@@ -226,8 +228,12 @@ Deno.serve(async (req) => {
       .eq('id', authData.user.id)
       .maybeSingle();
 
-    if (profErr || !callerProfile || !callerProfile.is_active) {
-      return jsonResponse({ ok: false, error: 'Caller profile is inactive or missing.' }, 403);
+    if (profErr || !callerProfile) {
+      return jsonResponse({ ok: false, error: 'Caller profile not found.' }, 401);
+    }
+
+    if (!callerProfile.is_active) {
+      return jsonResponse({ ok: false, error: 'Caller account is deactivated.' }, 403);
     }
 
     const callerRole = callerProfile.role as UserRole;
@@ -235,7 +241,19 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'Only Super Admin or Hall Admin can manage users.' }, 403);
     }
 
-    // Load caller's own permissions strictly from DB for Hall Admin (never synthesize defaults)
+    let payload: ManageUsersPayload;
+    try {
+      payload = (await req.json()) as ManageUsersPayload;
+    } catch {
+      return jsonResponse({ ok: false, error: 'Invalid JSON request body.' }, 400);
+    }
+
+    const action = payload?.action;
+    if (!action) {
+      return jsonResponse({ ok: false, error: 'Missing action parameter.' }, 400);
+    }
+
+    // Load caller's own permissions from DB for Hall Admin (strictly DB-enforced)
     const callerPermsMap = new Map<ScreenKey, PermissionEntryInput>();
     if (callerRole === 'admin') {
       if (!callerProfile.hall_id) {
@@ -266,11 +284,12 @@ Deno.serve(async (req) => {
       }
 
       const usersPerm = callerPermsMap.get('users');
-      if (!usersPerm?.can_edit) {
-        return jsonResponse(
-          { ok: false, error: 'You do not have Edit permission on the Users screen.' },
-          403
-        );
+      if (action === 'list_users') {
+        if (!usersPerm?.can_view) {
+          return jsonResponse({ ok: false, error: 'You do not have View permission on the Users screen.' }, 403);
+        }
+      } else if (!usersPerm?.can_edit) {
+        return jsonResponse({ ok: false, error: 'You do not have Edit permission on the Users screen.' }, 403);
       }
     }
 
@@ -297,9 +316,45 @@ Deno.serve(async (req) => {
       return null;
     };
 
-    const payload = (await req.json()) as ManageUsersPayload;
-    const { action } = payload;
+    // ------------------------------------------------------------------------
+    // ACTION 1: list_users
+    // ------------------------------------------------------------------------
+    if (action === 'list_users') {
+      let profileQuery = adminClient
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false });
 
+      if (callerRole === 'admin') {
+        profileQuery = profileQuery.eq('hall_id', callerProfile.hall_id);
+      }
+
+      const { data: users, error: listErr } = await profileQuery;
+      if (listErr) {
+        return jsonResponse({ ok: false, error: listErr.message }, 400);
+      }
+
+      let permQuery = adminClient.from('user_permissions').select('*');
+      if (callerRole === 'admin' && callerProfile.hall_id) {
+        permQuery = permQuery.eq('hall_id', callerProfile.hall_id);
+      }
+      const { data: perms, error: permsErr } = await permQuery;
+      if (permsErr) {
+        return jsonResponse({ ok: false, error: permsErr.message }, 400);
+      }
+
+      return jsonResponse({
+        ok: true,
+        data: {
+          users: users || [],
+          permissions: perms || [],
+        },
+      });
+    }
+
+    // ------------------------------------------------------------------------
+    // ACTION 2: create_user
+    // ------------------------------------------------------------------------
     if (action === 'create_user') {
       const email = (payload.email || '').trim().toLowerCase();
       const password = payload.password || '';
@@ -321,16 +376,10 @@ Deno.serve(async (req) => {
       let targetHallId: string | null = null;
       if (callerRole === 'admin') {
         if (requestedRole !== 'manager') {
-          return jsonResponse(
-            { ok: false, error: 'Hall Admin can only create Manager accounts.' },
-            403
-          );
+          return jsonResponse({ ok: false, error: 'Hall Admin can only create Manager accounts.' }, 403);
         }
         if (payload.hall_id !== undefined && payload.hall_id !== callerProfile.hall_id) {
-          return jsonResponse(
-            { ok: false, error: 'Hall Admin can only create users in their own hall.' },
-            403
-          );
+          return jsonResponse({ ok: false, error: 'Hall Admin can only create users in their own hall.' }, 403);
         }
         targetHallId = callerProfile.hall_id;
       } else {
@@ -439,10 +488,18 @@ Deno.serve(async (req) => {
         },
       });
 
-      return jsonResponse({ ok: true, profile: upsertedProfile, permissions: savedPermissions || [] });
+      return jsonResponse({
+        ok: true,
+        data: {
+          profile: upsertedProfile,
+          permissions: savedPermissions || [],
+        },
+      });
     }
 
-    // Existing-user operations require userId
+    // ------------------------------------------------------------------------
+    // Target User Validation for Existing-User Actions
+    // ------------------------------------------------------------------------
     const targetUserId = payload.userId;
     if (!targetUserId) {
       return jsonResponse({ ok: false, error: 'Target userId is required.' }, 400);
@@ -475,6 +532,9 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ------------------------------------------------------------------------
+    // ACTION 3: reset_password
+    // ------------------------------------------------------------------------
     if (action === 'reset_password') {
       const newPassword = payload.password || '';
       if (newPassword.length < 6) {
@@ -486,29 +546,62 @@ Deno.serve(async (req) => {
       if (pwErr) {
         return jsonResponse({ ok: false, error: pwErr.message }, 400);
       }
-      return jsonResponse({ ok: true });
+
+      await adminClient.from('audit_logs').insert({
+        hall_id: targetProfile.hall_id || DEFAULT_FALLBACK_HALL_ID,
+        actor_id: callerProfile.id,
+        actor_name: callerProfile.full_name,
+        actor_role: callerRole,
+        action: 'USER',
+        entity_type: 'profile',
+        entity_id: targetUserId,
+        entity_label: targetProfile.email,
+        changes: { event: 'password_reset' },
+      });
+
+      return jsonResponse({ ok: true, data: { userId: targetUserId } });
     }
 
-    if (action === 'toggle_active') {
+    // ------------------------------------------------------------------------
+    // ACTION 4: deactivate_user (supports is_active toggle, defaults to false)
+    // ------------------------------------------------------------------------
+    if (action === 'deactivate_user') {
       if (isSelfTarget) {
-        return jsonResponse({ ok: false, error: 'Users cannot change their own active status.' }, 403);
+        return jsonResponse({ ok: false, error: 'Users cannot deactivate or reactivate their own account.' }, 403);
       }
-      const nextActive = Boolean(payload.is_active);
+      const nextActive = payload.is_active !== undefined ? Boolean(payload.is_active) : false;
       const { data: updated, error: actErr } = await adminClient
         .from('profiles')
         .update({ is_active: nextActive, updated_at: new Date().toISOString() })
         .eq('id', targetUserId)
         .select('*')
         .single();
+
       if (actErr) {
         return jsonResponse({ ok: false, error: actErr.message }, 400);
       }
-      return jsonResponse({ ok: true, profile: updated });
+
+      await adminClient.from('audit_logs').insert({
+        hall_id: targetProfile.hall_id || DEFAULT_FALLBACK_HALL_ID,
+        actor_id: callerProfile.id,
+        actor_name: callerProfile.full_name,
+        actor_role: callerRole,
+        action: 'USER',
+        entity_type: 'profile',
+        entity_id: targetUserId,
+        entity_label: targetProfile.email,
+        changes: { event: nextActive ? 'user_reactivated' : 'user_deactivated', is_active: nextActive },
+      });
+
+      return jsonResponse({ ok: true, data: { profile: updated } });
     }
 
-    if (action === 'update_user' || action === 'update_permissions') {
+    // ------------------------------------------------------------------------
+    // ACTION 5 & 6: update_user & set_permissions
+    // ------------------------------------------------------------------------
+    if (action === 'update_user' || action === 'set_permissions') {
       if (isSelfTarget) {
-        if (action === 'update_permissions' || (payload.permissions && payload.permissions.length > 0)) {
+        if (action === 'set_permissions' || (payload.permissions && payload.permissions.length > 0)) {
           return jsonResponse({ ok: false, error: 'Users cannot modify their own permissions.' }, 403);
         }
         if (payload.role !== undefined && payload.role !== targetProfile.role) {
@@ -535,7 +628,11 @@ Deno.serve(async (req) => {
         }
       }
 
-      const nextRole = callerRole === 'super_admin' ? ((payload.role ?? targetProfile.role) as UserRole) : (targetProfile.role as UserRole);
+      const nextRole =
+        callerRole === 'super_admin'
+          ? ((payload.role ?? targetProfile.role) as UserRole)
+          : (targetProfile.role as UserRole);
+
       const nextHallIdCandidate =
         callerRole === 'super_admin'
           ? nextRole === 'super_admin'
@@ -556,35 +653,40 @@ Deno.serve(async (req) => {
         if (delegationErr) {
           return jsonResponse({ ok: false, error: delegationErr }, 403);
         }
+      } else if (action === 'set_permissions') {
+        return jsonResponse({ ok: false, error: 'Permissions array is required for set_permissions.' }, 400);
       }
 
-      const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-      if (payload.full_name !== undefined) patch.full_name = payload.full_name.trim();
-      if (payload.phone !== undefined) patch.phone = payload.phone.trim();
-      if (payload.is_active !== undefined && !isSelfTarget) {
-        patch.is_active = Boolean(payload.is_active);
-      }
-      if (callerRole === 'super_admin' && !isSelfTarget) {
-        if (payload.role !== undefined) patch.role = nextRole;
-        if (payload.hall_id !== undefined || nextRole === 'super_admin') patch.hall_id = nextHallIdCandidate;
-      }
+      let updatedProfile = targetProfile;
+      if (action === 'update_user') {
+        const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+        if (payload.full_name !== undefined) patch.full_name = payload.full_name.trim();
+        if (payload.phone !== undefined) patch.phone = payload.phone.trim();
+        if (payload.is_active !== undefined && !isSelfTarget) {
+          patch.is_active = Boolean(payload.is_active);
+        }
+        if (callerRole === 'super_admin' && !isSelfTarget) {
+          if (payload.role !== undefined) patch.role = nextRole;
+          if (payload.hall_id !== undefined || nextRole === 'super_admin') patch.hall_id = nextHallIdCandidate;
+        }
 
-      const { data: updated, error: updErr } = await adminClient
-        .from('profiles')
-        .update(patch)
-        .eq('id', targetUserId)
-        .select('*')
-        .single();
-      if (updErr) {
-        return jsonResponse({ ok: false, error: updErr.message }, 400);
+        const { data: updated, error: updErr } = await adminClient
+          .from('profiles')
+          .update(patch)
+          .eq('id', targetUserId)
+          .select('*')
+          .single();
+        if (updErr) {
+          return jsonResponse({ ok: false, error: updErr.message }, 400);
+        }
+        updatedProfile = updated;
       }
 
       let savedPermissions: unknown[] | undefined = undefined;
       if (desiredMatrix) {
-        const nextHallId = (updated.hall_id || targetProfile.hall_id || DEFAULT_FALLBACK_HALL_ID) as string;
-
-        // Load old permissions for diff audit log (no synthetic defaults for non-super_admin)
+        const nextHallId = (updatedProfile.hall_id || targetProfile.hall_id || DEFAULT_FALLBACK_HALL_ID) as string;
         const oldHallId = (targetProfile.hall_id || nextHallId) as string;
+
         const { data: oldRows } = await adminClient
           .from('user_permissions')
           .select('screen_key, can_view, can_edit, can_delete')
@@ -666,10 +768,16 @@ Deno.serve(async (req) => {
         }
       }
 
-      return jsonResponse({ ok: true, profile: updated, permissions: savedPermissions });
+      return jsonResponse({
+        ok: true,
+        data: {
+          profile: updatedProfile,
+          permissions: savedPermissions,
+        },
+      });
     }
 
-    return jsonResponse({ ok: false, error: 'Unknown action.' }, 400);
+    return jsonResponse({ ok: false, error: `Unknown action "${action}".` }, 400);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unexpected server error.';
     return jsonResponse({ ok: false, error: msg }, 500);

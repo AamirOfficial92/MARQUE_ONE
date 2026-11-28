@@ -3,9 +3,9 @@ import { Printer, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { HALL_LOGO_SRC } from '../data/seedData';
 import {
+  formatBookingEventDisplay,
   pickLocalized,
   tr,
-  translateEventType,
   translateFloor,
   translatePaymentMode,
 } from '../i18n/translations';
@@ -19,15 +19,20 @@ interface ReceiptModalProps {
 }
 
 export const ReceiptModal: React.FC<ReceiptModalProps> = ({ payment, booking, onClose }) => {
-  const { db, lang } = useApp();
+  const { db, rawDb, activeHall, lang } = useApp();
   const settings = db.settings;
-  const hallName = pickLocalized(settings.hall_name, settings.hall_name_ur, lang);
+  const bookingHall = rawDb.halls.find((h) => h.id === booking.hall_id) || activeHall;
+  const hallName = pickLocalized(bookingHall.name, bookingHall.name_ur, lang);
+  const hallAddressBase = pickLocalized(bookingHall.address, bookingHall.address_ur, lang);
+  const hallAddress = [hallAddressBase, bookingHall.city].filter(Boolean).join(', ');
+  const hallFooter = pickLocalized(bookingHall.invoice_footer_en, bookingHall.invoice_footer_ur, lang);
+  const logoSrc = bookingHall.logo_url || settings.logo_url || HALL_LOGO_SRC;
   const fin = calculateBookingFinancials(booking, db.bookingItems, db.payments, db.expenses);
 
   const floorLabel = booking.floors
     .map((f) => translateFloor(f, lang, db.floors))
     .join(lang === 'ur' ? '، ' : ' / ');
-  const eventTypeLabel = translateEventType(booking.event_type, lang, db.eventTypes);
+  const eventTypeLabel = formatBookingEventDisplay(booking, lang, db.eventTypes);
 
   useEffect(() => {
     document.body.classList.add('print-thermal');
@@ -77,13 +82,19 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ payment, booking, on
         >
           <div className="text-center border-b border-dashed border-slate-400 pb-2.5 space-y-1">
             <img
-              src={settings.logo_url || HALL_LOGO_SRC}
+              src={logoSrc}
               alt={hallName}
+              crossOrigin={logoSrc.startsWith('http') ? 'anonymous' : undefined}
               referrerPolicy="no-referrer"
               className="w-10 h-10 rounded-lg object-cover border border-slate-300 mx-auto"
             />
             <div className="text-sm font-bold tracking-tight">{hallName}</div>
-            <div className="text-[10px] text-slate-700 tabular-nums">{settings.phone}</div>
+            {hallAddress && (
+              <div className="text-[9.5px] text-slate-600 leading-tight">{hallAddress}</div>
+            )}
+            <div className="text-[10px] text-slate-700 tabular-nums">
+              {[bookingHall.phone || settings.phone, bookingHall.phone_secondary].filter(Boolean).join(' / ')}
+            </div>
             <div className="text-[10px] font-bold uppercase tracking-wider pt-0.5">
               {tr('paymentReceiptTitle', lang)}
             </div>
@@ -167,10 +178,13 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ payment, booking, on
             </div>
           </div>
 
-          <div className="text-center text-[10px] text-slate-700 pt-1">
-            {lang === 'ur'
-              ? `${hallName} کو منتخب کرنے کا شکریہ`
-              : `Thank you for choosing ${hallName}`}
+          <div className="text-center text-[10px] text-slate-700 pt-1 space-y-0.5">
+            <div>
+              {lang === 'ur'
+                ? `${hallName} کو منتخب کرنے کا شکریہ`
+                : `Thank you for choosing ${hallName}`}
+            </div>
+            {hallFooter && <div className="text-[9.5px] text-slate-500">{hallFooter}</div>}
           </div>
         </div>
       </div>

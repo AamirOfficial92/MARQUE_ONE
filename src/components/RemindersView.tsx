@@ -2,9 +2,9 @@ import React, { useMemo } from 'react';
 import { Bell, CalendarClock, Mail, MessageCircle } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import {
+  formatBookingEventDisplay,
   pickLocalized,
   tr,
-  translateEventType,
   translateFloor,
 } from '../i18n/translations';
 import { Booking } from '../types';
@@ -20,10 +20,9 @@ import {
 } from '../utils/formatters';
 
 export const RemindersView: React.FC = () => {
-  const { db, lang } = useApp();
+  const { db, rawDb, activeHall, lang } = useApp();
   const today = todayISO();
   const next7 = addDaysISO(today, 7);
-  const hallName = pickLocalized(db.settings.hall_name, db.settings.hall_name_ur, lang);
 
   const installmentAlerts = useMemo(() => {
     return db.installments
@@ -54,23 +53,28 @@ export const RemindersView: React.FC = () => {
   }, [db.bookings, today, next7]);
 
   const makeReminderMsg = (bk: Booking, extraLine: string) => {
-    const eventLabel = translateEventType(bk.event_type, lang, db.eventTypes);
+    const bookingHall = rawDb.halls.find((h) => h.id === bk.hall_id) || activeHall;
+    const bkHallName = pickLocalized(bookingHall.name, bookingHall.name_ur, lang);
+    const contactPhone = bookingHall.whatsapp
+      ? `+${bookingHall.whatsapp}`
+      : bookingHall.phone || db.settings.phone;
+    const eventLabel = formatBookingEventDisplay(bk, lang, db.eventTypes);
     const dateLabel = formatDateDisplay(bk.event_date, lang);
     if (lang === 'ur') {
       return [
         `السلام علیکم ${bk.customer_name}،`,
-        `${hallName} کی جانب سے یاددہانی`,
+        `${bkHallName} کی جانب سے یاددہانی`,
         `بکنگ کوڈ: ${bk.booking_code} | تقریب: ${eventLabel} (${dateLabel})`,
         extraLine,
-        `رابطہ نمبر: ${db.settings.phone}`,
+        `رابطہ نمبر: ${contactPhone}`,
       ].join('\n');
     }
     return [
       `Assalam-o-Alaikum ${bk.customer_name},`,
-      `Reminder from ${hallName}`,
+      `Reminder from ${bkHallName}`,
       `Booking: ${bk.booking_code} | Event: ${eventLabel} on ${dateLabel}`,
       extraLine,
-      `Contact: ${db.settings.phone}`,
+      `Contact: ${contactPhone}`,
     ].join('\n');
   };
 

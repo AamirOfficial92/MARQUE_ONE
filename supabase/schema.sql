@@ -58,13 +58,37 @@ CREATE TABLE IF NOT EXISTS public.halls (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   name_ur TEXT NOT NULL DEFAULT '',
+  tagline_en TEXT NOT NULL DEFAULT '',
+  tagline_ur TEXT NOT NULL DEFAULT '',
   address TEXT NOT NULL DEFAULT '',
   address_ur TEXT NOT NULL DEFAULT '',
+  city TEXT NOT NULL DEFAULT '',
   phone TEXT NOT NULL DEFAULT '',
+  phone_secondary TEXT NOT NULL DEFAULT '',
+  whatsapp TEXT NOT NULL DEFAULT '',
   email TEXT NOT NULL DEFAULT '',
+  website TEXT NOT NULL DEFAULT '',
+  facebook_url TEXT NOT NULL DEFAULT '',
+  instagram_url TEXT NOT NULL DEFAULT '',
+  tiktok_url TEXT NOT NULL DEFAULT '',
+  youtube_url TEXT NOT NULL DEFAULT '',
+  x_url TEXT NOT NULL DEFAULT '',
+  google_maps_url TEXT NOT NULL DEFAULT '',
   logo_url TEXT DEFAULT '',
+  signature_url TEXT DEFAULT '',
+  ntn TEXT NOT NULL DEFAULT '',
+  strn TEXT NOT NULL DEFAULT '',
+  bank_account_title TEXT NOT NULL DEFAULT '',
+  bank_name TEXT NOT NULL DEFAULT '',
+  bank_iban TEXT NOT NULL DEFAULT '',
+  show_bank_details BOOLEAN NOT NULL DEFAULT false,
+  invoice_footer_en TEXT NOT NULL DEFAULT '',
+  invoice_footer_ur TEXT NOT NULL DEFAULT '',
+  terms_en TEXT NOT NULL DEFAULT '',
+  terms_ur TEXT NOT NULL DEFAULT '',
   booking_code_prefix TEXT NOT NULL DEFAULT 'MQ1',
   invoice_prefix TEXT NOT NULL DEFAULT 'INV',
+  currency TEXT NOT NULL DEFAULT 'PKR',
   is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -74,18 +98,29 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_halls_id ON public.halls (id);
 
 -- Seed first default hall "Marquee 1" immediately so migrations can reference it
 INSERT INTO public.halls (
-  id, name, name_ur, address, address_ur, phone, email, logo_url, booking_code_prefix, invoice_prefix, is_active
+  id, name, name_ur, tagline_en, tagline_ur, address, address_ur, city,
+  phone, whatsapp, email, logo_url, invoice_footer_en, invoice_footer_ur,
+  terms_en, terms_ur, booking_code_prefix, invoice_prefix, currency, is_active
 ) VALUES (
   '11111111-1111-4111-8111-111111111101',
   'Marquee 1',
   'مارکی 1 بینکوئٹ ہال',
+  'Luxury Banquet & Event Venue',
+  'لگژری بینکوئٹ اور ایونٹ ہال',
   'Plot 14-C, Main Shahrah-e-Faisal, Block 6 PECHS, Karachi',
   'پلاٹ 14-سی، مین شاہراہِ فیصل، بلاک 6 پی ای سی ایچ ایس، کراچی',
+  'Karachi',
   '0300-2198844',
+  '923002198844',
   'bookings@marquee1.pk',
   '/src/assets/images/marquee_logo_1795763096758.jpg',
+  'Thank you for choosing us for your memorable celebration.',
+  'اپنی یادگار تقریب کے لیے ہمارا انتخاب کرنے کا شکریہ۔',
+  '1. 50% advance is required to confirm booking. 2. Remaining balance must be cleared 7 days prior to event date. 3. Returned cold drink crates are credited after deducting PKR 180/crate for ice and handling. 4. Management is not responsible for personal valuables.',
+  '1۔ بکنگ کنفرم کرنے کے لیے 50 فیصد پیشگی ادائیگی لازمی ہے۔ 2۔ بقیہ رقم تقریب سے 7 روز قبل ادا کرنا ہوگی۔ 3۔ واپس کی گئی کولڈ ڈرنک کریٹس پر 180 روپے فی کریٹ برف اور ہینڈلنگ منہا کر کے رقم بل سے کم کی جائے گی۔ 4۔ ذاتی قیمتی اشیاء کی حفاظت مہمانوں کی اپنی ذمہ داری ہوگی۔',
   'MQ1',
   'INV',
+  'PKR',
   true
 )
 ON CONFLICT (id) DO NOTHING;
@@ -186,18 +221,35 @@ CREATE TABLE IF NOT EXISTS public.customers (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Event Types (Per Hall)
-CREATE TABLE IF NOT EXISTS public.event_types (
+-- Event Categories (Per Hall)
+CREATE TABLE IF NOT EXISTS public.event_categories (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   hall_id UUID NOT NULL REFERENCES public.halls(id) ON DELETE CASCADE DEFAULT '11111111-1111-4111-8111-111111111101',
   name_en TEXT NOT NULL,
-  name_ur TEXT NOT NULL,
-  color_hex TEXT NOT NULL DEFAULT '#06B6D4',
-  is_default BOOLEAN NOT NULL DEFAULT false,
+  name_ur TEXT NOT NULL DEFAULT '',
+  sort_order INT NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT true,
   deleted_at TIMESTAMPTZ,
   deleted_by UUID REFERENCES auth.users(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (hall_id, name_en)
+);
+
+-- Event Types (Per Hall, nested under event_categories)
+CREATE TABLE IF NOT EXISTS public.event_types (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  hall_id UUID NOT NULL REFERENCES public.halls(id) ON DELETE CASCADE DEFAULT '11111111-1111-4111-8111-111111111101',
+  category_id UUID REFERENCES public.event_categories(id) ON DELETE RESTRICT,
+  name_en TEXT NOT NULL,
+  name_ur TEXT NOT NULL,
+  color_hex TEXT NOT NULL DEFAULT '#06B6D4',
+  is_default BOOLEAN NOT NULL DEFAULT false,
+  sort_order INT NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  deleted_at TIMESTAMPTZ,
+  deleted_by UUID REFERENCES auth.users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (hall_id, category_id, name_en)
 );
 
 -- Charge Categories (Per Hall)
@@ -311,7 +363,10 @@ CREATE TABLE IF NOT EXISTS public.bookings (
   customer_phone TEXT NOT NULL,
   customer_nic TEXT NOT NULL,
   customer_email TEXT,
+  event_category_id UUID REFERENCES public.event_categories(id) ON DELETE RESTRICT,
+  event_type_id UUID REFERENCES public.event_types(id) ON DELETE RESTRICT,
   event_type TEXT NOT NULL,
+  event_other_name TEXT NOT NULL DEFAULT '',
   event_date DATE NOT NULL,
   start_time TIME NOT NULL,
   end_time TIME NOT NULL,
@@ -423,10 +478,27 @@ CREATE TABLE IF NOT EXISTS public.expense_categories (
   hall_id UUID NOT NULL REFERENCES public.halls(id) ON DELETE CASCADE DEFAULT '11111111-1111-4111-8111-111111111101',
   name_en TEXT NOT NULL,
   name_ur TEXT NOT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT true,
   deleted_at TIMESTAMPTZ,
   deleted_by UUID REFERENCES auth.users(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (hall_id, name_en)
+);
+
+-- Expense Sub-categories (Per Hall, nested under expense_categories)
+CREATE TABLE IF NOT EXISTS public.expense_subcategories (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  hall_id UUID NOT NULL REFERENCES public.halls(id) ON DELETE CASCADE DEFAULT '11111111-1111-4111-8111-111111111101',
+  category_id UUID NOT NULL REFERENCES public.expense_categories(id) ON DELETE RESTRICT,
+  name_en TEXT NOT NULL,
+  name_ur TEXT NOT NULL DEFAULT '',
+  sort_order INT NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  deleted_at TIMESTAMPTZ,
+  deleted_by UUID REFERENCES auth.users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (hall_id, category_id, name_en)
 );
 
 -- Employees (Per Hall)
@@ -477,8 +549,13 @@ CREATE TABLE IF NOT EXISTS public.employee_advances (
 CREATE TABLE IF NOT EXISTS public.expenses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   hall_id UUID NOT NULL REFERENCES public.halls(id) ON DELETE CASCADE DEFAULT '11111111-1111-4111-8111-111111111101',
-  category_id UUID REFERENCES public.expense_categories(id) ON DELETE SET NULL,
+  category_id UUID REFERENCES public.expense_categories(id) ON DELETE RESTRICT,
   category_name TEXT NOT NULL,
+  category_name_ur TEXT NOT NULL DEFAULT '',
+  subcategory_id UUID REFERENCES public.expense_subcategories(id) ON DELETE RESTRICT,
+  subcategory_name TEXT NOT NULL DEFAULT '',
+  subcategory_name_ur TEXT NOT NULL DEFAULT '',
+  manual_description TEXT NOT NULL DEFAULT '',
   booking_id UUID REFERENCES public.bookings(id) ON DELETE SET NULL,
   employee_id UUID REFERENCES public.employees(id) ON DELETE SET NULL,
   amount NUMERIC(12,2) NOT NULL CHECK (amount > 0),
@@ -598,9 +675,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_bookings_hall_code ON public.bookings(hall_
 CREATE UNIQUE INDEX IF NOT EXISTS uq_bookings_hall_invoice ON public.bookings(hall_id, invoice_number) WHERE invoice_number IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_invoices_hall_number ON public.invoices(hall_id, invoice_number);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_payments_hall_receipt ON public.payments(hall_id, receipt_number);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_event_types_hall_name ON public.event_types(hall_id, name_en);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_event_categories_hall_name ON public.event_categories(hall_id, name_en);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_event_types_hall_cat_name ON public.event_types(hall_id, category_id, name_en);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_charge_categories_hall_name ON public.charge_categories(hall_id, name_en);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_expense_categories_hall_name ON public.expense_categories(hall_id, name_en);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_expense_subcategories_hall_cat_name ON public.expense_subcategories(hall_id, category_id, name_en);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_employee_attendance_emp_date ON public.employee_attendance(employee_id, attendance_date);
 
 -- ============================================================================
@@ -732,7 +811,8 @@ CREATE TABLE IF NOT EXISTS public.user_permissions (
   screen_key TEXT NOT NULL CHECK (screen_key IN (
     'dashboard','calendar','bookings','customers','payments','daily_closing','catalog',
     'expenses','employees','attendance','salaries','reports','invoices','reminders',
-    'users','settings','recycle_bin','audit_log','backup_import'
+    'users','settings','halls','event_categories','expense_categories',
+    'recycle_bin','audit_log','backup_import'
   )),
   can_view BOOLEAN NOT NULL DEFAULT false,
   can_edit BOOLEAN NOT NULL DEFAULT false,
@@ -833,7 +913,8 @@ DECLARE
   all_screens TEXT[] := ARRAY[
     'dashboard','calendar','bookings','customers','payments','daily_closing','catalog',
     'expenses','employees','attendance','salaries','reports','invoices','reminders',
-    'users','settings','recycle_bin','audit_log','backup_import'
+    'users','settings','halls','event_categories','expense_categories',
+    'recycle_bin','audit_log','backup_import'
   ];
 BEGIN
   FOREACH v_screen IN ARRAY all_screens LOOP
@@ -842,8 +923,8 @@ BEGIN
       v_edit := true;
       v_del := true;
     ELSIF p_role = 'admin' THEN
-      v_view := v_screen NOT IN ('recycle_bin', 'audit_log');
-      v_edit := v_screen NOT IN ('recycle_bin', 'audit_log');
+      v_view := v_screen NOT IN ('recycle_bin', 'audit_log', 'event_categories', 'expense_categories');
+      v_edit := v_screen NOT IN ('recycle_bin', 'audit_log', 'event_categories', 'expense_categories');
       v_del := false;
     ELSE
       v_edit := v_screen IN (
@@ -1087,6 +1168,7 @@ ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_permissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.hall_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.event_categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.event_types ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.charge_categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.charges_catalog ENABLE ROW LEVEL SECURITY;
@@ -1096,6 +1178,7 @@ ALTER TABLE public.booking_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.installment_schedules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.expense_categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.expense_subcategories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.employees ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.employee_attendance ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.employee_advances ENABLE ROW LEVEL SECURITY;
@@ -1118,6 +1201,47 @@ BEGIN
   END LOOP;
 END $$;
 
+CREATE OR REPLACE FUNCTION public.guard_hall_update_for_admin()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_jwt_role TEXT := COALESCE(current_setting('request.jwt.claim.role', true), '');
+  v_caller_role public.user_role;
+BEGIN
+  IF auth.uid() IS NULL OR v_jwt_role = 'service_role' THEN
+    NEW.updated_at := now();
+    RETURN NEW;
+  END IF;
+
+  v_caller_role := public.current_user_role();
+  IF v_caller_role = 'super_admin' THEN
+    NEW.updated_at := now();
+    RETURN NEW;
+  END IF;
+
+  IF v_caller_role = 'admin' THEN
+    IF NEW.id IS DISTINCT FROM OLD.id
+       OR NEW.is_active IS DISTINCT FROM OLD.is_active
+       OR NEW.booking_code_prefix IS DISTINCT FROM OLD.booking_code_prefix
+       OR NEW.invoice_prefix IS DISTINCT FROM OLD.invoice_prefix
+       OR NEW.currency IS DISTINCT FROM OLD.currency THEN
+      RAISE EXCEPTION 'Hall Admin cannot modify hall ID, active status, prefixes, or currency.'
+        USING ERRCODE = '42501';
+    END IF;
+    NEW.updated_at := now();
+    RETURN NEW;
+  END IF;
+
+  RAISE EXCEPTION 'Only Super Admin or permitted Hall Admin can update hall records.'
+    USING ERRCODE = '42501';
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+DROP TRIGGER IF EXISTS trg_guard_hall_update_for_admin ON public.halls;
+CREATE TRIGGER trg_guard_hall_update_for_admin
+  BEFORE UPDATE ON public.halls
+  FOR EACH ROW
+  EXECUTE FUNCTION public.guard_hall_update_for_admin();
+
 -- HALLS
 CREATE POLICY "Users read permitted halls" ON public.halls
   FOR SELECT USING (
@@ -1125,7 +1249,79 @@ CREATE POLICY "Users read permitted halls" ON public.halls
     OR id = public.current_user_hall_id()
   );
 CREATE POLICY "Super admin manages halls" ON public.halls
-  FOR ALL USING (public.current_user_role() = 'super_admin');
+  FOR ALL USING (public.current_user_role() = 'super_admin')
+  WITH CHECK (public.current_user_role() = 'super_admin');
+CREATE POLICY "Hall admin updates own hall profile" ON public.halls
+  FOR UPDATE USING (
+    public.current_user_role() = 'admin'
+    AND id = public.current_user_hall_id()
+    AND public.has_permission('halls', 'edit')
+  )
+  WITH CHECK (
+    public.current_user_role() = 'admin'
+    AND id = public.current_user_hall_id()
+    AND public.has_permission('halls', 'edit')
+  );
+
+-- STORAGE BUCKET & POLICIES ('hall-assets')
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'hall-assets',
+  'hall-assets',
+  true,
+  2097152,
+  ARRAY['image/png', 'image/jpeg', 'image/webp']
+)
+ON CONFLICT (id) DO UPDATE SET
+  public = EXCLUDED.public,
+  file_size_limit = EXCLUDED.file_size_limit,
+  allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+DROP POLICY IF EXISTS "Public read hall assets" ON storage.objects;
+CREATE POLICY "Public read hall assets" ON storage.objects
+  FOR SELECT USING (bucket_id = 'hall-assets');
+
+DROP POLICY IF EXISTS "Super admin and hall admin upload hall assets" ON storage.objects;
+CREATE POLICY "Super admin and hall admin upload hall assets" ON storage.objects
+  FOR INSERT WITH CHECK (
+    bucket_id = 'hall-assets'
+    AND (
+      public.current_user_role() = 'super_admin'
+      OR (
+        public.current_user_role() = 'admin'
+        AND public.has_permission('halls', 'edit')
+        AND (storage.foldername(name))[1] = public.current_user_hall_id()::text
+      )
+    )
+  );
+
+DROP POLICY IF EXISTS "Super admin and hall admin update hall assets" ON storage.objects;
+CREATE POLICY "Super admin and hall admin update hall assets" ON storage.objects
+  FOR UPDATE USING (
+    bucket_id = 'hall-assets'
+    AND (
+      public.current_user_role() = 'super_admin'
+      OR (
+        public.current_user_role() = 'admin'
+        AND public.has_permission('halls', 'edit')
+        AND (storage.foldername(name))[1] = public.current_user_hall_id()::text
+      )
+    )
+  );
+
+DROP POLICY IF EXISTS "Super admin and hall admin delete hall assets" ON storage.objects;
+CREATE POLICY "Super admin and hall admin delete hall assets" ON storage.objects
+  FOR DELETE USING (
+    bucket_id = 'hall-assets'
+    AND (
+      public.current_user_role() = 'super_admin'
+      OR (
+        public.current_user_role() = 'admin'
+        AND public.has_permission('halls', 'edit')
+        AND (storage.foldername(name))[1] = public.current_user_hall_id()::text
+      )
+    )
+  );
 
 -- HALL SEQUENCES
 CREATE POLICY "Read hall sequences" ON public.hall_sequences
@@ -1252,29 +1448,56 @@ CREATE POLICY "Update customers by permission" ON public.customers
 CREATE POLICY "Delete customers by permission" ON public.customers
   FOR DELETE USING (public.can_access_hall(hall_id) AND public.has_permission('customers', 'delete'));
 
--- EVENT TYPES
+-- EVENT CATEGORIES & EVENT TYPES
+CREATE POLICY "Read hall event categories by permission" ON public.event_categories
+  FOR SELECT USING (
+    public.can_access_hall(hall_id)
+    AND (
+      (deleted_at IS NULL AND (
+        public.has_permission('event_categories', 'view')
+        OR public.has_permission('settings', 'view')
+        OR public.has_permission('bookings', 'view')
+        OR public.has_permission('calendar', 'view')
+        OR public.has_permission('dashboard', 'view')
+        OR public.has_permission('reports', 'view')
+      ))
+      OR (deleted_at IS NOT NULL AND public.has_permission('recycle_bin', 'view'))
+    )
+  );
+CREATE POLICY "Insert hall event categories by permission" ON public.event_categories
+  FOR INSERT WITH CHECK (public.can_access_hall(hall_id) AND public.has_permission('event_categories', 'edit'));
+CREATE POLICY "Update hall event categories by permission" ON public.event_categories
+  FOR UPDATE USING (
+    public.can_access_hall(hall_id)
+    AND (public.has_permission('event_categories', 'edit') OR public.has_permission('event_categories', 'delete') OR public.has_permission('recycle_bin', 'edit'))
+  );
+CREATE POLICY "Block hard delete event categories" ON public.event_categories
+  FOR DELETE USING (false);
+
 CREATE POLICY "Read hall event types by permission" ON public.event_types
   FOR SELECT USING (
     public.can_access_hall(hall_id)
     AND (
       (deleted_at IS NULL AND (
-        public.has_permission('settings', 'view')
+        public.has_permission('event_categories', 'view')
+        OR public.has_permission('settings', 'view')
         OR public.has_permission('bookings', 'view')
         OR public.has_permission('calendar', 'view')
         OR public.has_permission('dashboard', 'view')
+        OR public.has_permission('reports', 'view')
       ))
       OR (deleted_at IS NOT NULL AND public.has_permission('recycle_bin', 'view'))
     )
   );
 CREATE POLICY "Insert hall event types by permission" ON public.event_types
-  FOR INSERT WITH CHECK (public.can_access_hall(hall_id) AND public.has_permission('settings', 'edit'));
+  FOR INSERT WITH CHECK (public.can_access_hall(hall_id) AND public.has_permission('event_categories', 'edit'));
 CREATE POLICY "Update hall event types by permission" ON public.event_types
   FOR UPDATE USING (
     public.can_access_hall(hall_id)
-    AND (public.has_permission('settings', 'edit') OR public.has_permission('settings', 'delete') OR public.has_permission('recycle_bin', 'edit'))
+    AND (public.has_permission('event_categories', 'edit') OR public.has_permission('event_categories', 'delete') OR public.has_permission('recycle_bin', 'edit'))
   );
-CREATE POLICY "Delete hall event types by permission" ON public.event_types
-  FOR DELETE USING (public.can_access_hall(hall_id) AND public.has_permission('settings', 'delete'));
+CREATE POLICY "Block hard delete event types" ON public.event_types
+  FOR DELETE USING (false);
 
 -- CHARGE CATEGORIES & CATALOG
 CREATE POLICY "Read charge categories by permission" ON public.charge_categories
@@ -1499,7 +1722,8 @@ CREATE POLICY "Read expense categories by permission" ON public.expense_categori
     public.can_access_hall(hall_id)
     AND (
       (deleted_at IS NULL AND (
-        public.has_permission('expenses', 'view')
+        public.has_permission('expense_categories', 'view')
+        OR public.has_permission('expenses', 'view')
         OR public.has_permission('reports', 'view')
         OR public.has_permission('salaries', 'view')
       ))
@@ -1507,11 +1731,45 @@ CREATE POLICY "Read expense categories by permission" ON public.expense_categori
     )
   );
 CREATE POLICY "Insert expense categories by permission" ON public.expense_categories
-  FOR INSERT WITH CHECK (public.can_access_hall(hall_id) AND public.has_permission('expenses', 'edit'));
+  FOR INSERT WITH CHECK (public.can_access_hall(hall_id) AND public.has_permission('expense_categories', 'edit'));
 CREATE POLICY "Update expense categories by permission" ON public.expense_categories
-  FOR UPDATE USING (public.can_access_hall(hall_id) AND (public.has_permission('expenses', 'edit') OR public.has_permission('expenses', 'delete') OR public.has_permission('recycle_bin', 'edit')));
-CREATE POLICY "Delete expense categories by permission" ON public.expense_categories
-  FOR DELETE USING (public.can_access_hall(hall_id) AND public.has_permission('expenses', 'delete'));
+  FOR UPDATE USING (
+    public.can_access_hall(hall_id)
+    AND (
+      public.has_permission('expense_categories', 'edit')
+      OR public.has_permission('expense_categories', 'delete')
+      OR public.has_permission('recycle_bin', 'edit')
+    )
+  );
+CREATE POLICY "Block hard delete expense categories" ON public.expense_categories
+  FOR DELETE USING (false);
+
+CREATE POLICY "Read expense subcategories by permission" ON public.expense_subcategories
+  FOR SELECT USING (
+    public.can_access_hall(hall_id)
+    AND (
+      (deleted_at IS NULL AND (
+        public.has_permission('expense_categories', 'view')
+        OR public.has_permission('expenses', 'view')
+        OR public.has_permission('reports', 'view')
+        OR public.has_permission('salaries', 'view')
+      ))
+      OR (deleted_at IS NOT NULL AND public.has_permission('recycle_bin', 'view'))
+    )
+  );
+CREATE POLICY "Insert expense subcategories by permission" ON public.expense_subcategories
+  FOR INSERT WITH CHECK (public.can_access_hall(hall_id) AND public.has_permission('expense_categories', 'edit'));
+CREATE POLICY "Update expense subcategories by permission" ON public.expense_subcategories
+  FOR UPDATE USING (
+    public.can_access_hall(hall_id)
+    AND (
+      public.has_permission('expense_categories', 'edit')
+      OR public.has_permission('expense_categories', 'delete')
+      OR public.has_permission('recycle_bin', 'edit')
+    )
+  );
+CREATE POLICY "Block hard delete expense subcategories" ON public.expense_subcategories
+  FOR DELETE USING (false);
 
 CREATE POLICY "Read employees by permission" ON public.employees
   FOR SELECT USING (
@@ -1683,15 +1941,32 @@ INSERT INTO public.hall_settings (hall_id)
 VALUES ('11111111-1111-4111-8111-111111111101')
 ON CONFLICT (hall_id) DO NOTHING;
 
-INSERT INTO public.event_types (hall_id, name_en, name_ur, color_hex, is_default) VALUES
-  ('11111111-1111-4111-8111-111111111101', 'Baraat', 'بارات', '#F59E0B', true),
-  ('11111111-1111-4111-8111-111111111101', 'Mayun', 'مایوں', '#EAB308', true),
-  ('11111111-1111-4111-8111-111111111101', 'Walima', 'ولیمہ', '#06B6D4', true),
-  ('11111111-1111-4111-8111-111111111101', 'Birthday', 'سالگرہ', '#EC4899', true),
-  ('11111111-1111-4111-8111-111111111101', 'Conference', 'کانفرنس', '#8B5CF6', true),
-  ('11111111-1111-4111-8111-111111111101', 'Seminar', 'سیمینار', '#10B981', true),
-  ('11111111-1111-4111-8111-111111111101', 'Other', 'دیگر تقریب', '#64748B', true)
+INSERT INTO public.event_categories (hall_id, name_en, name_ur, sort_order, is_active) VALUES
+  ('11111111-1111-4111-8111-111111111101', 'Wedding Ceremony', 'شادی کی تقریبات', 1, true),
+  ('11111111-1111-4111-8111-111111111101', 'Family & Social', 'خاندانی و سماجی تقریبات', 2, true),
+  ('11111111-1111-4111-8111-111111111101', 'Corporate', 'کارپوریٹ تقریبات', 3, true),
+  ('11111111-1111-4111-8111-111111111101', 'Other', 'دیگر', 4, true)
 ON CONFLICT (hall_id, name_en) DO NOTHING;
+
+INSERT INTO public.event_types (hall_id, category_id, name_en, name_ur, color_hex, is_default, sort_order, is_active)
+SELECT '11111111-1111-4111-8111-111111111101', ec.id, v.name_en, v.name_ur, v.color_hex, true, v.sort_order, true
+FROM (VALUES
+  ('Wedding Ceremony', 'Baraat', 'بارات', '#F59E0B', 1),
+  ('Wedding Ceremony', 'Mayun', 'مایوں', '#EAB308', 2),
+  ('Wedding Ceremony', 'Mangni (Engagement)', 'منگنی', '#FB7185', 3),
+  ('Wedding Ceremony', 'Nikah', 'نکاح', '#14B8A6', 4),
+  ('Wedding Ceremony', 'Mehendi', 'مہندی', '#22C55E', 5),
+  ('Wedding Ceremony', 'Walima', 'ولیمہ', '#06B6D4', 6),
+  ('Family & Social', 'Birthday', 'سالگرہ', '#EC4899', 1),
+  ('Family & Social', 'Aqiqah', 'عقیقہ', '#6366F1', 2),
+  ('Family & Social', 'Anniversary', 'سالگرہِ شادی', '#F97316', 3),
+  ('Corporate', 'Conference', 'کانفرنس', '#8B5CF6', 1),
+  ('Corporate', 'Seminar', 'سیمینار', '#10B981', 2),
+  ('Corporate', 'Workshop', 'ورکشاپ', '#0EA5E9', 3),
+  ('Other', 'Other', 'دیگر', '#64748B', 1)
+) AS v(cat_name, name_en, name_ur, color_hex, sort_order)
+JOIN public.event_categories ec ON ec.hall_id = '11111111-1111-4111-8111-111111111101' AND ec.name_en = v.cat_name
+ON CONFLICT (hall_id, category_id, name_en) DO NOTHING;
 
 INSERT INTO public.charge_categories (hall_id, name_en, name_ur, sort_order) VALUES
   ('11111111-1111-4111-8111-111111111101', 'Default Package', 'بنیادی پیکج', 1),
@@ -1723,19 +1998,33 @@ WHERE NOT EXISTS (
   WHERE existing.hall_id = '11111111-1111-4111-8111-111111111101' AND existing.name_en = v.name_en
 );
 
-INSERT INTO public.expense_categories (hall_id, name_en, name_ur) VALUES
-  ('11111111-1111-4111-8111-111111111101', 'Sound', 'ساؤنڈ سسٹم'),
-  ('11111111-1111-4111-8111-111111111101', 'Decoration', 'ڈیکوریشن'),
-  ('11111111-1111-4111-8111-111111111101', 'Florist', 'پھولوں کا خرچ'),
-  ('11111111-1111-4111-8111-111111111101', 'Peon', 'چپراسی / ہیلپر'),
-  ('11111111-1111-4111-8111-111111111101', 'Sweeper', 'سویپر / صفائی عملہ'),
-  ('11111111-1111-4111-8111-111111111101', 'Waiters (Daily Wage)', 'ویٹرز یومیہ اجرت'),
-  ('11111111-1111-4111-8111-111111111101', 'Utilities', 'بجلی و گیس بل'),
-  ('11111111-1111-4111-8111-111111111101', 'Cleaning', 'صفائی ستھرائی'),
-  ('11111111-1111-4111-8111-111111111101', 'Maintenance', 'مرمت و دیکھ بھال'),
-  ('11111111-1111-4111-8111-111111111101', 'Salaries', 'ماہانہ تنخواہیں'),
-  ('11111111-1111-4111-8111-111111111101', 'Other', 'دیگر اخراجات')
+INSERT INTO public.expense_categories (hall_id, name_en, name_ur, sort_order, is_active) VALUES
+  ('11111111-1111-4111-8111-111111111101', 'Salaries', 'تنخواہیں', 1, true),
+  ('11111111-1111-4111-8111-111111111101', 'Daily Wages', 'یومیہ اجرت', 2, true),
+  ('11111111-1111-4111-8111-111111111101', 'Utilities', 'بجلی، گیس اور یوٹیلیٹیز', 3, true),
+  ('11111111-1111-4111-8111-111111111101', 'Cleaning', 'صفائی ستھرائی', 4, true),
+  ('11111111-1111-4111-8111-111111111101', 'Maintenance', 'مرمت و دیکھ بھال', 5, true),
+  ('11111111-1111-4111-8111-111111111101', 'Vendors', 'وینڈرز / ٹھیکیدار', 6, true),
+  ('11111111-1111-4111-8111-111111111101', 'Other', 'دیگر اخراجات', 7, true)
 ON CONFLICT (hall_id, name_en) DO NOTHING;
+
+INSERT INTO public.expense_subcategories (hall_id, category_id, name_en, name_ur, sort_order, is_active)
+SELECT '11111111-1111-4111-8111-111111111101', ec.id, v.name_en, v.name_ur, v.sort_order, true
+FROM (VALUES
+  ('Salaries', 'Monthly Salaries', 'ماہانہ تنخواہیں', 1),
+  ('Salaries', 'Advances', 'ایڈوانس تنخواہ', 2),
+  ('Daily Wages', 'Waiters', 'ویٹرز', 1),
+  ('Daily Wages', 'Helpers', 'ہیلپرز', 2),
+  ('Utilities', 'Electricity', 'بجلی', 1),
+  ('Utilities', 'Gas', 'گیس', 2),
+  ('Utilities', 'Water', 'پانی', 3),
+  ('Utilities', 'Internet', 'انٹرنیٹ', 4),
+  ('Vendors', 'Sound', 'ساؤنڈ سسٹم', 1),
+  ('Vendors', 'Decoration', 'ڈیکوریشن', 2),
+  ('Vendors', 'Florist', 'پھولوں کا خرچ', 3)
+) AS v(cat_name, name_en, name_ur, sort_order)
+JOIN public.expense_categories ec ON ec.hall_id = '11111111-1111-4111-8111-111111111101' AND ec.name_en = v.cat_name
+ON CONFLICT (hall_id, category_id, name_en) DO NOTHING;
 
 -- Seed sample customers, employees & bookings only if Marquee 1 currently has 0 bookings
 DO $$
@@ -1750,9 +2039,19 @@ DECLARE
   b3 UUID := gen_random_uuid();
   b4 UUID := gen_random_uuid();
   exp_sal_id UUID;
-  exp_waiter_id UUID;
+  exp_sal_monthly_id UUID;
+  exp_dw_id UUID;
+  exp_dw_waiter_id UUID;
   exp_util_id UUID;
-  exp_florist_id UUID;
+  exp_util_elec_id UUID;
+  exp_vend_id UUID;
+  exp_vend_florist_id UUID;
+  ev_wed_id UUID;
+  ev_corp_id UUID;
+  et_baraat_id UUID;
+  et_walima_id UUID;
+  et_mayun_id UUID;
+  et_conf_id UUID;
 BEGIN
   IF EXISTS (SELECT 1 FROM public.bookings WHERE hall_id = mq1 LIMIT 1) THEN
     RETURN;
@@ -1773,29 +2072,40 @@ BEGIN
     (c3, mq1, 'Zainab & Hamza Malik', '0333-3109482', '42101-6620194-3', 'B-19, Gulshan-e-Iqbal Block 13-D, Karachi', 'hamza.malik@example.pk'),
     (c4, mq1, 'Engro Tech Summit Karachi', '0345-8201944', '42301-1190482-5', 'Harbour Front, Clifton, Karachi', 'events@engrotech.example.pk');
 
+  SELECT id INTO ev_wed_id FROM public.event_categories WHERE hall_id = mq1 AND name_en = 'Wedding Ceremony' LIMIT 1;
+  SELECT id INTO ev_corp_id FROM public.event_categories WHERE hall_id = mq1 AND name_en = 'Corporate' LIMIT 1;
+  SELECT id INTO et_baraat_id FROM public.event_types WHERE hall_id = mq1 AND category_id = ev_wed_id AND name_en = 'Baraat' LIMIT 1;
+  SELECT id INTO et_walima_id FROM public.event_types WHERE hall_id = mq1 AND category_id = ev_wed_id AND name_en = 'Walima' LIMIT 1;
+  SELECT id INTO et_mayun_id FROM public.event_types WHERE hall_id = mq1 AND category_id = ev_wed_id AND name_en = 'Mayun' LIMIT 1;
+  SELECT id INTO et_conf_id FROM public.event_types WHERE hall_id = mq1 AND category_id = ev_corp_id AND name_en = 'Conference' LIMIT 1;
+
   SELECT id INTO exp_sal_id FROM public.expense_categories WHERE hall_id = mq1 AND name_en = 'Salaries' LIMIT 1;
-  SELECT id INTO exp_waiter_id FROM public.expense_categories WHERE hall_id = mq1 AND name_en = 'Waiters (Daily Wage)' LIMIT 1;
+  SELECT id INTO exp_sal_monthly_id FROM public.expense_subcategories WHERE hall_id = mq1 AND category_id = exp_sal_id AND name_en = 'Monthly Salaries' LIMIT 1;
+  SELECT id INTO exp_dw_id FROM public.expense_categories WHERE hall_id = mq1 AND name_en = 'Daily Wages' LIMIT 1;
+  SELECT id INTO exp_dw_waiter_id FROM public.expense_subcategories WHERE hall_id = mq1 AND category_id = exp_dw_id AND name_en = 'Waiters' LIMIT 1;
   SELECT id INTO exp_util_id FROM public.expense_categories WHERE hall_id = mq1 AND name_en = 'Utilities' LIMIT 1;
-  SELECT id INTO exp_florist_id FROM public.expense_categories WHERE hall_id = mq1 AND name_en = 'Florist' LIMIT 1;
+  SELECT id INTO exp_util_elec_id FROM public.expense_subcategories WHERE hall_id = mq1 AND category_id = exp_util_id AND name_en = 'Electricity' LIMIT 1;
+  SELECT id INTO exp_vend_id FROM public.expense_categories WHERE hall_id = mq1 AND name_en = 'Vendors' LIMIT 1;
+  SELECT id INTO exp_vend_florist_id FROM public.expense_subcategories WHERE hall_id = mq1 AND category_id = exp_vend_id AND name_en = 'Florist' LIMIT 1;
 
   INSERT INTO public.bookings (
     id, hall_id, customer_id, customer_name, customer_address, customer_phone, customer_nic, customer_email,
-    event_type, event_date, start_time, end_time, floors, guests_count, hall_rent, notes, inspection_notes, status,
+    event_category_id, event_type_id, event_type, event_date, start_time, end_time, floors, guests_count, hall_rent, notes, inspection_notes, status,
     crates_ordered, crates_used, crates_returned, crate_rate, crate_handling_deduction_per_crate, crate_credit_amount,
     late_charge_method, late_charge_value, late_charge_amount,
     discount_type, discount_value, discount_amount, discount_reason
   ) VALUES
     (b1, mq1, c1, 'Haji Abdul Rehman Siddiqui', 'House 42-B, DHA Phase 6, Karachi', '0300-8219940', '42301-4451290-1', 'rehman.siddiqui@example.pk',
-     'Baraat', CURRENT_DATE, '20:00', '00:00', ARRAY['First', 'Second'], 650, 340000, 'VIP Baraat stage with fresh red roses and valet parking.', 'AC chillers verified 1 hour prior.', 'Confirmed',
+     ev_wed_id, et_baraat_id, 'Baraat', CURRENT_DATE, '20:00', '00:00', ARRAY['First', 'Second'], 650, 340000, 'VIP Baraat stage with fresh red roses and valet parking.', 'AC chillers verified 1 hour prior.', 'Confirmed',
      45, 38, 7, 1600, 180, 9940, 'none', 0, 0, 'fixed', 15000, 15000, 'Early booking family courtesy'),
     (b2, mq1, c2, 'Dr. Ayesha Farooq', 'Flat 12, Clifton Block 4, Karachi', '0321-2948811', '42201-8891234-2', 'ayesha.farooq@example.pk',
-     'Walima', CURRENT_DATE + 3, '20:00', '00:00', ARRAY['Full Hall'], 1100, 450000, 'Full marquee booking with outdoor BBQ courtyard.', '', 'Confirmed',
+     ev_wed_id, et_walima_id, 'Walima', CURRENT_DATE + 3, '20:00', '00:00', ARRAY['Full Hall'], 1100, 450000, 'Full marquee booking with outdoor BBQ courtyard.', '', 'Confirmed',
      60, 0, 0, 1600, 180, 0, 'none', 0, 0, 'fixed', 0, 0, ''),
     (b3, mq1, c3, 'Zainab & Hamza Malik', 'B-19, Gulshan-e-Iqbal Block 13-D, Karachi', '0333-3109482', '42101-6620194-3', 'hamza.malik@example.pk',
-     'Mayun', CURRENT_DATE + 5, '19:30', '23:30', ARRAY['Third'], 250, 150000, 'Yellow marigold theme with outdoor BBQ space.', '', 'Tentative',
+     ev_wed_id, et_mayun_id, 'Mayun', CURRENT_DATE + 5, '19:30', '23:30', ARRAY['Third'], 250, 150000, 'Yellow marigold theme with outdoor BBQ space.', '', 'Tentative',
      20, 0, 0, 1600, 180, 0, 'none', 0, 0, 'fixed', 0, 0, ''),
     (b4, mq1, c4, 'Engro Tech Summit Karachi', 'Harbour Front, Clifton, Karachi', '0345-8201944', '42301-1190482-5', 'events@engrotech.example.pk',
-     'Conference', CURRENT_DATE, '09:00', '15:00', ARRAY['First'], 300, 180000, 'Morning corporate seminar on First Floor.', 'Projector & mic tested.', 'Confirmed',
+     ev_corp_id, et_conf_id, 'Conference', CURRENT_DATE, '09:00', '15:00', ARRAY['First'], 300, 180000, 'Morning corporate seminar on First Floor.', 'Projector & mic tested.', 'Confirmed',
      15, 0, 0, 1600, 180, 0, 'none', 0, 0, 'fixed', 0, 0, '');
 
   INSERT INTO public.booking_items (hall_id, booking_id, item_name, item_name_ur, category_name, quantity, rate, amount, is_package_included, is_crate_service) VALUES
@@ -1818,11 +2128,15 @@ BEGIN
     (mq1, b2, 'Second Installment', CURRENT_DATE + 1, 150000, false),
     (mq1, b3, 'Booking Confirmation Advance', CURRENT_DATE + 2, 75000, false);
 
-  INSERT INTO public.expenses (hall_id, category_id, category_name, booking_id, amount, expense_date, payee, mode, reference_no, notes) VALUES
-    (mq1, exp_util_id, 'Utilities', NULL, 94500, CURRENT_DATE - 5, 'K-Electric Commercial', 'Online', 'KE-2026-8841', 'Monthly electricity bill'),
-    (mq1, exp_sal_id, 'Salaries', NULL, 55000, CURRENT_DATE - 4, 'Tariq Mahmood', 'Online', 'SAL-NOV-01', 'Monthly salary'),
-    (mq1, exp_florist_id, 'Florist', b1, 22000, CURRENT_DATE - 1, 'Al-Madina Florist Saddar', 'Cash', 'FLR-210', 'Fresh red roses stage setup for Baraat'),
-    (mq1, exp_waiter_id, 'Waiters (Daily Wage)', b1, 18000, CURRENT_DATE, 'Salman Raza & Waiter Team (10 Staff)', 'Cash', 'DW-441', 'Baraat event table service waiters');
+  INSERT INTO public.expenses (
+    hall_id, category_id, category_name, category_name_ur,
+    subcategory_id, subcategory_name, subcategory_name_ur,
+    booking_id, amount, expense_date, payee, mode, reference_no, notes
+  ) VALUES
+    (mq1, exp_util_id, 'Utilities', 'بجلی، گیس اور یوٹیلیٹیز', exp_util_elec_id, 'Electricity', 'بجلی', NULL, 94500, CURRENT_DATE - 5, 'K-Electric Commercial', 'Online', 'KE-2026-8841', 'Monthly electricity bill'),
+    (mq1, exp_sal_id, 'Salaries', 'تنخواہیں', exp_sal_monthly_id, 'Monthly Salaries', 'ماہانہ تنخواہیں', NULL, 55000, CURRENT_DATE - 4, 'Tariq Mahmood', 'Online', 'SAL-NOV-01', 'Monthly salary'),
+    (mq1, exp_vend_id, 'Vendors', 'وینڈرز / ٹھیکیدار', exp_vend_florist_id, 'Florist', 'پھولوں کا خرچ', b1, 22000, CURRENT_DATE - 1, 'Al-Madina Florist Saddar', 'Cash', 'FLR-210', 'Fresh red roses stage setup for Baraat'),
+    (mq1, exp_dw_id, 'Daily Wages', 'یومیہ اجرت', exp_dw_waiter_id, 'Waiters', 'ویٹرز', b1, 18000, CURRENT_DATE, 'Salman Raza & Waiter Team (10 Staff)', 'Cash', 'DW-441', 'Baraat event table service waiters');
 
   INSERT INTO public.audit_logs (hall_id, actor_name, actor_role, action, entity_type, entity_id, entity_label, changes) VALUES
     (mq1, 'System Seed', 'super_admin', 'CREATE', 'booking', b1::TEXT, 'MQ1-2026-0001', '{"status": "Confirmed", "event_type": "Baraat"}'::jsonb);

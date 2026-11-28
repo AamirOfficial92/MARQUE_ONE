@@ -1,9 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { History, Search } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { tr, translateRole } from '../i18n/translations';
+import { normalizeWesternDigits } from '../utils/formatters';
 
 export const AuditLogView: React.FC = () => {
-  const { db } = useApp();
+  const { db, lang } = useApp();
+  const isUr = lang === 'ur';
   const [filter, setFilter] = useState('');
 
   const logs = useMemo(() => {
@@ -25,21 +28,27 @@ export const AuditLogView: React.FC = () => {
         <div>
           <h2 className="text-base font-bold text-white flex items-center gap-2">
             <History className="w-4 h-4 text-violet-400" />
-            <span>System Audit Log</span>
+            <span>{tr('auditLog', lang)}</span>
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Tracks all bookings, event date changes, payments, expenses, deletions, restorations, and settings updates.
+            {isUr
+              ? 'تمام بکنگز، تاریخ کی تبدیلی، ادائیگیوں، اخراجات، حذف/بحالی، ہال پروفائل اور سیٹنگز کی تبدیلیوں کا ریکارڈ۔'
+              : 'Tracks all bookings, event date changes, payments, expenses, deletions, restorations, hall profiles, and settings updates.'}
           </p>
         </div>
 
         <div className="relative w-full sm:w-72">
-          <Search className="w-4 h-4 text-slate-400 absolute top-2.5 left-3 rtl:left-auto rtl:right-3" />
+          <Search className="w-4 h-4 text-slate-400 absolute top-2.5 start-3" />
           <input
             type="text"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filter actor, code, or action..."
-            className="w-full bg-slate-950/70 border border-slate-800 rounded-xl py-2 pl-9 pr-3 text-xs text-white"
+            placeholder={
+              isUr
+                ? 'صارف، کوڈ یا عمل تلاش کریں...'
+                : 'Filter actor, code, or action...'
+            }
+            className="w-full bg-slate-950/70 border border-slate-800 rounded-xl py-2 ps-9 pe-3 text-xs text-white"
           />
         </div>
       </div>
@@ -49,28 +58,32 @@ export const AuditLogView: React.FC = () => {
           <table className="w-full text-xs">
             <thead className="bg-slate-900/80 text-slate-400 border-b border-slate-800">
               <tr>
-                <th className="py-3 px-4 text-start">Timestamp</th>
-                <th className="py-3 px-4 text-start">Actor & Role</th>
-                <th className="py-3 px-4 text-start">Action</th>
-                <th className="py-3 px-4 text-start">Target</th>
-                <th className="py-3 px-4 text-start">Details</th>
+                <th className="py-3 px-4 text-start">{isUr ? 'وقت و تاریخ' : 'Timestamp'}</th>
+                <th className="py-3 px-4 text-start">{isUr ? 'عمل کنندہ اور عہدہ' : 'Actor & Role'}</th>
+                <th className="py-3 px-4 text-start">{isUr ? 'عمل' : 'Action'}</th>
+                <th className="py-3 px-4 text-start">{isUr ? 'ہدف' : 'Target'}</th>
+                <th className="py-3 px-4 text-start">{isUr ? 'تفصیلات' : 'Details'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/70">
               {logs.map((log) => (
                 <tr key={log.id} className="hover:bg-slate-900/30">
                   <td className="py-3 px-4 tabular-nums text-slate-400 whitespace-nowrap">
-                    {new Date(log.created_at).toLocaleString('en-PK')}
+                    {normalizeWesternDigits(
+                      new Date(log.created_at).toLocaleString(isUr ? 'ur-PK-u-nu-latn' : 'en-PK')
+                    )}
                   </td>
                   <td className="py-3 px-4">
                     <div className="font-semibold text-white">{log.actor_name}</div>
-                    <div className="text-[11px] text-amber-300 capitalize">{log.actor_role.replace('_', ' ')}</div>
+                    <div className="text-[11px] text-amber-300">{translateRole(log.actor_role, lang)}</div>
                   </td>
                   <td className="py-3 px-4 font-semibold">
                     <span
                       className={
                         log.action === 'PERMISSIONS'
                           ? 'text-amber-300'
+                          : log.action === 'HALL'
+                          ? 'text-emerald-300'
                           : log.action === 'DELETE'
                           ? 'text-rose-400'
                           : 'text-cyan-300'
@@ -114,6 +127,13 @@ export const AuditLogView: React.FC = () => {
                   </td>
                 </tr>
               ))}
+              {logs.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-slate-500">
+                    {tr('noRecords', lang)}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

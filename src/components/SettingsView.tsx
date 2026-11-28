@@ -1,22 +1,27 @@
 import React, { useEffect, useState } from 'react';
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
   Building2,
   CalendarRange,
+  Copy,
   Database,
   Download,
   Edit3,
   FileSpreadsheet,
+  FolderTree,
+  Loader2,
   Monitor,
   Moon,
   Plus,
+  Power,
   Save,
   Sun,
   Trash2,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useApp } from '../context/AppContext';
-import { HALL_LOGO_SRC } from '../data/seedData';
 import {
   hasMissingBilingualPair,
   pickLocalized,
@@ -28,21 +33,22 @@ import {
 import {
   ChargeCatalogItem,
   ChargeCategory,
+  EventCategory,
   EventTypeItem,
   FloorConfig,
   FloorName,
   FloorRatePair,
-  Hall,
   HallSettings,
   RentSeasonRule,
 } from '../types';
 import { formatPKR } from '../utils/formatters';
 
-type SettingsTab = 'hall' | 'pricing' | 'catalog' | 'events' | 'halls' | 'backup';
+type SettingsTab = 'hall' | 'pricing' | 'catalog' | 'events' | 'backup';
 
 interface SettingsViewProps {
   initialTab?: SettingsTab;
   catalogOnly?: boolean;
+  requestedSubTab?: { tab: SettingsTab; nonce: number };
 }
 
 const FLOOR_LIST: FloorName[] = ['First', 'Second', 'Third', 'Full Hall'];
@@ -59,10 +65,12 @@ const MissingTranslationIcon: React.FC<{ show: boolean; title: string }> = ({ sh
 export const SettingsView: React.FC<SettingsViewProps> = ({
   initialTab,
   catalogOnly = false,
+  requestedSubTab,
 }) => {
   const {
     db,
     rawDb,
+    activeHall,
     currentUser,
     can,
     lang,
@@ -70,13 +78,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     themePreferenceSource,
     setTheme,
     resetThemeToSystem,
-    saveHall,
     updateSettings,
-    saveFloorLabel,
+    saveFloorLabelsBatch,
     saveChargeCategory,
     saveChargeItem,
     softDeleteChargeItem,
+    saveEventCategory,
+    toggleEventCategoryActive,
+    reorderEventCategories,
+    softDeleteEventCategory,
     saveEventType,
+    toggleEventTypeActive,
+    reorderEventTypes,
+    softDeleteEventType,
+    copyEventTaxonomyFromHall,
   } = useApp();
 
   const isUr = lang === 'ur';
@@ -87,6 +102,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const canViewCatalog = can('catalog', 'view');
   const canEditCatalog = can('catalog', 'edit');
   const canDeleteCatalog = can('catalog', 'delete');
+  const canViewEventCats = can('event_categories', 'view');
+  const canEditEventCats = can('event_categories', 'edit');
+  const canDeleteEventCats = can('event_categories', 'delete');
   const canViewBackup = can('backup_import', 'view');
 
   const visibleTabs: Array<{ id: SettingsTab; label: string }> = catalogOnly
@@ -103,11 +121,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         ...(canViewCatalog
           ? [{ id: 'catalog' as SettingsTab, label: tr('catalogTab', lang) }]
           : []),
-        ...(canViewSettings
+        ...(canViewEventCats
           ? [{ id: 'events' as SettingsTab, label: tr('eventTypesTab', lang) }]
-          : []),
-        ...(isSuperAdmin && canViewSettings
-          ? [{ id: 'halls' as SettingsTab, label: tr('hallsManageTab', lang) }]
           : []),
         ...(isSuperAdmin && canViewBackup
           ? [{ id: 'backup' as SettingsTab, label: tr('importData', lang) }]
@@ -120,8 +135,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       : visibleTabs[0]?.id || 'hall';
 
   const [tab, setTab] = useState<SettingsTab>(defaultTab);
+  useEffect(() => {
+    if (!catalogOnly && requestedSubTab && visibleTabs.some((t) => t.id === requestedSubTab.tab)) {
+      setTab(requestedSubTab.tab);
+    }
+  }, [requestedSubTab, catalogOnly, visibleTabs]);
   const [form, setForm] = useState<HallSettings>(db.settings);
   const [savedNotice, setSavedNotice] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [savingFloors, setSavingFloors] = useState(false);
+  const [savingCat, setSavingCat] = useState(false);
+  const [savingCharge, setSavingCharge] = useState(false);
+  const [deletingChargeId, setDeletingChargeId] = useState<string | null>(null);
+  const [savingEventCat, setSavingEventCat] = useState(false);
+  const [savingEventType, setSavingEventType] = useState(false);
+  const [busyEventCatId, setBusyEventCatId] = useState<string | null>(null);
+  const [busyEventTypeId, setBusyEventTypeId] = useState<string | null>(null);
+  const [copyingEvents, setCopyingEvents] = useState(false);
+  const [copySourceHallId, setCopySourceHallId] = useState<string>('');
+  const [inUsePrompt, setInUsePrompt] = useState<{
+    kind: 'category' | 'event';
+    id: string;
+    name: string;
+    message: string;
+  } | null>(null);
 
   // Floor label edits
   const [floorDrafts, setFloorDrafts] = useState<Record<FloorName, { en: string; ur: string }>>({
@@ -145,20 +182,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setFloorDrafts(nextDrafts);
   }, [db.floors]);
 
-  // Hall creation/editing (super_admin only)
-  const [editingHallId, setEditingHallId] = useState<string | null>(null);
-  const [hallName, setHallName] = useState('');
-  const [hallNameUr, setHallNameUr] = useState('');
-  const [hallAddress, setHallAddress] = useState('');
-  const [hallAddressUr, setHallAddressUr] = useState('');
-  const [hallPhone, setHallPhone] = useState('');
-  const [hallEmail, setHallEmail] = useState('');
-  const [hallLogo, setHallLogo] = useState('');
-  const [hallBookingPrefix, setHallBookingPrefix] = useState('MQ2');
-  const [hallInvoicePrefix, setHallInvoicePrefix] = useState('INV2');
-  const [hallActive, setHallActive] = useState(true);
-  const [hallMsg, setHallMsg] = useState<string | null>(null);
-
   useEffect(() => {
     setForm(db.settings);
   }, [db.settings]);
@@ -171,7 +194,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const activeCategories = db.chargeCategories.filter((c) => !c.deleted_at);
   const activeCharges = db.chargesCatalog.filter((c) => !c.deleted_at);
-  const activeEventTypes = db.eventTypes.filter((e) => !e.deleted_at);
+  const activeEventCategories = [...db.eventCategories]
+    .filter((c) => !c.deleted_at)
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  const activeEventTypes = [...db.eventTypes]
+    .filter((e) => !e.deleted_at)
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  const otherHallsForCopy = rawDb.halls.filter((h) => h.id !== activeHall.id && h.is_active !== false);
 
   // Catalog Category Add/Edit
   const [editingCatId, setEditingCatId] = useState<string | null>(null);
@@ -189,33 +218,67 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [chargeDefaultPkg, setChargeDefaultPkg] = useState(false);
   const [chargeIsCrate, setChargeIsCrate] = useState(false);
 
+  // Event Category Add/Edit
+  const [editingEventCatId, setEditingEventCatId] = useState<string | null>(null);
+  const [evCatEn, setEvCatEn] = useState('');
+  const [evCatUr, setEvCatUr] = useState('');
+  const [evCatActive, setEvCatActive] = useState(true);
+
   // Event Type Add/Edit
   const [editingEtId, setEditingEtId] = useState<string | null>(null);
+  const [etCatId, setEtCatId] = useState<string>(activeEventCategories[0]?.id || '');
   const [etEn, setEtEn] = useState('');
   const [etUr, setEtUr] = useState('');
   const [etColor, setEtColor] = useState('#06B6D4');
+  const [etActive, setEtActive] = useState(true);
+
+  useEffect(() => {
+    if (!activeEventCategories.some((c) => c.id === etCatId)) {
+      setEtCatId(activeEventCategories[0]?.id || '');
+    }
+  }, [activeEventCategories, etCatId]);
+
+  useEffect(() => {
+    if (otherHallsForCopy.length > 0 && !otherHallsForCopy.some((h) => h.id === copySourceHallId)) {
+      setCopySourceHallId(otherHallsForCopy[0].id);
+    }
+  }, [otherHallsForCopy, copySourceHallId]);
 
   const handleSaveSettings = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    await updateSettings(form);
-    setSavedNotice(true);
-    setTimeout(() => setSavedNotice(false), 2500);
+    if (savingSettings) return;
+    setSavingSettings(true);
+    try {
+      const res = await updateSettings(form);
+      if (!res.ok) return;
+      setSavedNotice(true);
+      setTimeout(() => setSavedNotice(false), 2500);
+    } finally {
+      setSavingSettings(false);
+    }
   };
 
   const handleSaveAllFloors = async () => {
-    for (let i = 0; i < FLOOR_LIST.length; i++) {
-      const fk = FLOOR_LIST[i];
-      const existing: FloorConfig | undefined = db.floors.find((f) => f.floor_key === fk);
-      await saveFloorLabel({
-        id: existing?.id,
-        floor_key: fk,
-        name_en: floorDrafts[fk]?.en ?? '',
-        name_ur: floorDrafts[fk]?.ur ?? '',
-        sort_order: existing?.sort_order ?? i + 1,
+    if (savingFloors) return;
+    setSavingFloors(true);
+    try {
+      const payloads = FLOOR_LIST.map((fk, i) => {
+        const existing: FloorConfig | undefined = db.floors.find((f) => f.floor_key === fk);
+        return {
+          id: existing?.id,
+          floor_key: fk,
+          name_en: floorDrafts[fk]?.en ?? '',
+          name_ur: floorDrafts[fk]?.ur ?? '',
+          sort_order: existing?.sort_order ?? i + 1,
+        };
       });
+      const res = await saveFloorLabelsBatch(payloads);
+      if (!res.ok) return;
+      setFloorsSavedNotice(true);
+      setTimeout(() => setFloorsSavedNotice(false), 2500);
+    } finally {
+      setSavingFloors(false);
     }
-    setFloorsSavedNotice(true);
-    setTimeout(() => setFloorsSavedNotice(false), 2500);
   };
 
   const updateBaseRate = (floor: FloorName, dayType: keyof FloorRatePair, val: number) => {
@@ -308,11 +371,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setChargeIsCrate(false);
   };
 
+  const startEditEventCategory = (cat: EventCategory) => {
+    setEditingEventCatId(cat.id);
+    setEvCatEn(cat.name_en);
+    setEvCatUr(cat.name_ur);
+    setEvCatActive(cat.is_active !== false);
+  };
+
+  const resetEventCategoryForm = () => {
+    setEditingEventCatId(null);
+    setEvCatEn('');
+    setEvCatUr('');
+    setEvCatActive(true);
+  };
+
   const startEditEventType = (et: EventTypeItem) => {
     setEditingEtId(et.id);
+    setEtCatId(et.category_id || activeEventCategories[0]?.id || '');
     setEtEn(et.name_en);
     setEtUr(et.name_ur);
     setEtColor(et.color_hex || '#06B6D4');
+    setEtActive(et.is_active !== false);
   };
 
   const resetEventTypeForm = () => {
@@ -320,68 +399,38 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setEtEn('');
     setEtUr('');
     setEtColor('#06B6D4');
+    setEtActive(true);
   };
 
-  const startEditHall = (h: Hall) => {
-    setEditingHallId(h.id);
-    setHallName(h.name);
-    setHallNameUr(h.name_ur);
-    setHallAddress(h.address);
-    setHallAddressUr(h.address_ur);
-    setHallPhone(h.phone);
-    setHallEmail(h.email);
-    setHallLogo(h.logo_url);
-    setHallBookingPrefix(h.booking_code_prefix);
-    setHallInvoicePrefix(h.invoice_prefix);
-    setHallActive(h.is_active);
-    setHallMsg(null);
-  };
-
-  const resetHallForm = () => {
-    setEditingHallId(null);
-    setHallName('');
-    setHallNameUr('');
-    setHallAddress('');
-    setHallAddressUr('');
-    setHallPhone('');
-    setHallEmail('');
-    setHallLogo('');
-    setHallBookingPrefix(`MQ${db.halls.length + 1}`);
-    setHallInvoicePrefix(`INV${db.halls.length + 1}`);
-    setHallActive(true);
-  };
-
-  const handleSaveHallSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setHallMsg(null);
-    if (!hallName.trim() && !hallNameUr.trim()) return;
-    const res = await saveHall({
-      id: editingHallId || undefined,
-      name: hallName.trim(),
-      name_ur: hallNameUr.trim(),
-      address: hallAddress.trim(),
-      address_ur: hallAddressUr.trim(),
-      phone: hallPhone.trim(),
-      email: hallEmail.trim(),
-      logo_url: hallLogo.trim() || HALL_LOGO_SRC,
-      booking_code_prefix: hallBookingPrefix.trim().toUpperCase() || 'MQ',
-      invoice_prefix: hallInvoicePrefix.trim().toUpperCase() || 'INV',
-      is_active: hallActive,
-    });
-    if (!res.ok) {
-      setHallMsg(res.error || (isUr ? 'ہال محفوظ نہ ہو سکا۔' : 'Could not save hall.'));
-      return;
+  const moveCategoryOrder = async (catId: string, dir: -1 | 1) => {
+    const idx = activeEventCategories.findIndex((c) => c.id === catId);
+    const targetIdx = idx + dir;
+    if (idx < 0 || targetIdx < 0 || targetIdx >= activeEventCategories.length) return;
+    const ids = activeEventCategories.map((c) => c.id);
+    const [moved] = ids.splice(idx, 1);
+    ids.splice(targetIdx, 0, moved);
+    setBusyEventCatId(catId);
+    try {
+      await reorderEventCategories(ids);
+    } finally {
+      setBusyEventCatId(null);
     }
-    setHallMsg(
-      editingHallId
-        ? isUr
-          ? 'ہال اپڈیٹ کر دیا گیا۔'
-          : 'Hall updated.'
-        : isUr
-        ? 'نیا ہال بنیادی کیٹلاگ اور اقسام کے ساتھ بنا دیا گیا۔'
-        : 'New hall created with default catalog and event types.'
-    );
-    resetHallForm();
+  };
+
+  const moveEventOrder = async (categoryId: string, eventId: string, dir: -1 | 1) => {
+    const siblings = activeEventTypes.filter((e) => (e.category_id || '') === categoryId);
+    const idx = siblings.findIndex((e) => e.id === eventId);
+    const targetIdx = idx + dir;
+    if (idx < 0 || targetIdx < 0 || targetIdx >= siblings.length) return;
+    const ids = siblings.map((e) => e.id);
+    const [moved] = ids.splice(idx, 1);
+    ids.splice(targetIdx, 0, moved);
+    setBusyEventTypeId(eventId);
+    try {
+      await reorderEventTypes(categoryId, ids);
+    } finally {
+      setBusyEventTypeId(null);
+    }
   };
 
   const handleDownloadJsonBackup = () => {
@@ -498,8 +547,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-white">
                 {isUr
-                  ? 'ہال پروفائل، انوائس شرائط اور اوقات کے اصول'
-                  : 'Hall Profile, Invoice Rules & Operational Buffers'}
+                  ? 'انوائس کے اصول، ٹیکس اور اوقات کے وقفے'
+                  : 'Invoice Rules, Tax & Operational Buffers'}
               </h3>
               {savedNotice && (
                 <span className="text-xs font-semibold text-emerald-400">
@@ -508,143 +557,54 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-              <div>
-                <label className="flex items-center gap-1.5 text-slate-300 mb-1">
-                  <span>{isUr ? 'ہال کا نام (انگریزی)' : 'Hall Name (English)'}</span>
-                  <MissingTranslationIcon
-                    show={hasMissingBilingualPair(form.hall_name, form.hall_name_ur)}
-                    title={missingWarnTitle}
-                  />
-                </label>
-                <input
-                  type="text"
-                  dir="ltr"
-                  value={form.hall_name}
-                  onChange={(e) => setForm({ ...form, hall_name: e.target.value })}
-                  className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
-                />
-              </div>
-              <div>
-                <label className="flex items-center gap-1.5 text-slate-300 mb-1">
-                  <span>{isUr ? 'ہال کا نام (اردو)' : 'Hall Name (Urdu)'}</span>
-                  <MissingTranslationIcon
-                    show={hasMissingBilingualPair(form.hall_name, form.hall_name_ur)}
-                    title={missingWarnTitle}
-                  />
-                </label>
-                <input
-                  type="text"
-                  dir="rtl"
-                  value={form.hall_name_ur}
-                  onChange={(e) => setForm({ ...form, hall_name_ur: e.target.value })}
-                  className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white font-urdu"
-                />
-              </div>
+            <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-xs text-cyan-200 flex items-center gap-2.5">
+              <Building2 className="w-4 h-4 shrink-0 text-cyan-400" />
+              <span>
+                {isUr
+                  ? `ہال کی پروفائل، لوگو، پتہ، رابطہ نمبر، بینک تفصیلات اور انوائس شرائط "${pickLocalized(activeHall.name, activeHall.name_ur, lang)}" کے ہال پروفائل مینو سے سنبھالی جاتی ہیں۔`
+                  : `Hall branding, logo, contacts, bank details, and invoice terms for "${activeHall.name}" are managed in the ${isSuperAdmin ? 'Halls' : 'Hall Profile'} screen.`}
+              </span>
+            </div>
 
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
               <div>
-                <label className="flex items-center gap-1.5 text-slate-300 mb-1">
-                  <span>{isUr ? 'پتہ (انگریزی)' : 'Address (English)'}</span>
-                  <MissingTranslationIcon
-                    show={hasMissingBilingualPair(form.address, form.address_ur)}
-                    title={missingWarnTitle}
-                  />
+                <label className="block text-slate-300 mb-1">
+                  {isUr ? 'انوائس فارمیٹ' : 'Invoice Format'}
                 </label>
                 <input
                   type="text"
-                  dir="ltr"
-                  value={form.address}
-                  onChange={(e) => setForm({ ...form, address: e.target.value })}
-                  className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
-                />
-              </div>
-              <div>
-                <label className="flex items-center gap-1.5 text-slate-300 mb-1">
-                  <span>{isUr ? 'پتہ (اردو)' : 'Address (Urdu)'}</span>
-                  <MissingTranslationIcon
-                    show={hasMissingBilingualPair(form.address, form.address_ur)}
-                    title={missingWarnTitle}
-                  />
-                </label>
-                <input
-                  type="text"
-                  dir="rtl"
-                  value={form.address_ur}
-                  onChange={(e) => setForm({ ...form, address_ur: e.target.value })}
-                  className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white font-urdu"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-300 mb-1">{tr('phone', lang)}</label>
-                <input
-                  type="text"
-                  value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  value={form.invoice_format}
+                  onChange={(e) => setForm({ ...form, invoice_format: e.target.value })}
                   className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white tabular-nums"
                 />
               </div>
               <div>
-                <label className="block text-slate-300 mb-1">{tr('emailAddress', lang)}</label>
-                <input
-                  type="email"
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
-                />
-              </div>
-
-              <div>
                 <label className="block text-slate-300 mb-1">
-                  {isUr ? 'لوگو لنک (اختیاری)' : 'Logo URL (Optional)'}
+                  {isUr ? 'ٹیکس %' : 'Tax %'}
                 </label>
                 <input
-                  type="text"
-                  value={form.logo_url}
-                  onChange={(e) => setForm({ ...form, logo_url: e.target.value })}
-                  className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                  type="number"
+                  min={0}
+                  step="0.5"
+                  value={form.tax_percent}
+                  onChange={(e) => setForm({ ...form, tax_percent: Number(e.target.value) })}
+                  className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white tabular-nums"
                 />
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="block text-slate-300 mb-1">
-                    {isUr ? 'انوائس فارمیٹ' : 'Invoice Format'}
-                  </label>
-                  <input
-                    type="text"
-                    value={form.invoice_format}
-                    onChange={(e) => setForm({ ...form, invoice_format: e.target.value })}
-                    className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white tabular-nums"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-300 mb-1">
-                    {isUr ? 'ٹیکس %' : 'Tax %'}
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.5"
-                    value={form.tax_percent}
-                    onChange={(e) => setForm({ ...form, tax_percent: Number(e.target.value) })}
-                    className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white tabular-nums"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-300 mb-1">
-                    {isUr ? 'بنیادی زبان' : 'Default Language'}
-                  </label>
-                  <select
-                    value={form.default_language}
-                    onChange={(e) =>
-                      setForm({ ...form, default_language: e.target.value as 'en' | 'ur' })
-                    }
-                    className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
-                  >
-                    <option value="en">{tr('englishName', lang)}</option>
-                    <option value="ur">{tr('urduName', lang)}</option>
-                  </select>
-                </div>
+              <div>
+                <label className="block text-slate-300 mb-1">
+                  {isUr ? 'بنیادی زبان' : 'Default Language'}
+                </label>
+                <select
+                  value={form.default_language}
+                  onChange={(e) =>
+                    setForm({ ...form, default_language: e.target.value as 'en' | 'ur' })
+                  }
+                  className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                >
+                  <option value="en">{tr('englishName', lang)}</option>
+                  <option value="ur">{tr('urduName', lang)}</option>
+                </select>
               </div>
             </div>
 
@@ -739,48 +699,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </label>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-              <div>
-                <label className="flex items-center gap-1.5 text-slate-300 mb-1">
-                  <span>{isUr ? 'شرائط و ضوابط (انگریزی)' : 'Invoice Terms (English)'}</span>
-                  <MissingTranslationIcon
-                    show={hasMissingBilingualPair(form.terms_en, form.terms_ur)}
-                    title={missingWarnTitle}
-                  />
-                </label>
-                <textarea
-                  rows={3}
-                  dir="ltr"
-                  value={form.terms_en}
-                  onChange={(e) => setForm({ ...form, terms_en: e.target.value })}
-                  className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
-                />
-              </div>
-              <div>
-                <label className="flex items-center gap-1.5 text-slate-300 mb-1">
-                  <span>{isUr ? 'شرائط و ضوابط (اردو)' : 'Invoice Terms (Urdu)'}</span>
-                  <MissingTranslationIcon
-                    show={hasMissingBilingualPair(form.terms_en, form.terms_ur)}
-                    title={missingWarnTitle}
-                  />
-                </label>
-                <textarea
-                  rows={3}
-                  dir="rtl"
-                  value={form.terms_ur}
-                  onChange={(e) => setForm({ ...form, terms_ur: e.target.value })}
-                  className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white font-urdu"
-                />
-              </div>
-            </div>
-
             {canEditSettings && (
               <button
                 type="submit"
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold flex items-center gap-2"
+                disabled={savingSettings}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold flex items-center gap-2 disabled:opacity-50"
               >
-                <Save className="w-4 h-4" />
-                <span>{isUr ? 'ہال سیٹنگز محفوظ کریں' : 'Save Hall Settings'}</span>
+                {savingSettings ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
+                <span>{savingSettings ? tr('saving', lang) : isUr ? 'سیٹنگز محفوظ کریں' : 'Save Settings'}</span>
               </button>
             )}
           </form>
@@ -811,11 +741,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   )}
                   <button
                     type="button"
+                    disabled={savingSettings}
                     onClick={() => handleSaveSettings()}
-                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold flex items-center gap-1.5"
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50"
                   >
-                    <Save className="w-3.5 h-3.5" />
-                    <span>{isUr ? 'کرایہ محفوظ کریں' : 'Save Rent Tables'}</span>
+                    {savingSettings ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Save className="w-3.5 h-3.5" />
+                    )}
+                    <span>{savingSettings ? tr('saving', lang) : isUr ? 'کرایہ محفوظ کریں' : 'Save Rent Tables'}</span>
                   </button>
                 </div>
               )}
@@ -887,11 +822,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   )}
                   <button
                     type="button"
+                    disabled={savingFloors}
                     onClick={handleSaveAllFloors}
-                    className="px-4 py-2 rounded-xl border border-cyan-500/40 bg-cyan-500/15 text-cyan-300 text-xs font-semibold flex items-center gap-1.5"
+                    className="px-4 py-2 rounded-xl border border-cyan-500/40 bg-cyan-500/15 text-cyan-300 text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50"
                   >
-                    <Save className="w-3.5 h-3.5" />
-                    <span>{isUr ? 'فلورز محفوظ کریں' : 'Save Floor Labels'}</span>
+                    {savingFloors ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Save className="w-3.5 h-3.5" />
+                    )}
+                    <span>{savingFloors ? tr('saving', lang) : isUr ? 'فلورز محفوظ کریں' : 'Save Floor Labels'}</span>
                   </button>
                 </div>
               )}
@@ -1143,13 +1083,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
+                  if (savingCat) return;
                   if (!newCatEn.trim() && !newCatUr.trim()) return;
-                  await saveChargeCategory({
-                    id: editingCatId || undefined,
-                    name_en: newCatEn.trim(),
-                    name_ur: newCatUr.trim(),
-                  });
-                  resetCategoryForm();
+                  setSavingCat(true);
+                  try {
+                    const res = await saveChargeCategory({
+                      id: editingCatId || undefined,
+                      name_en: newCatEn.trim(),
+                      name_ur: newCatUr.trim(),
+                    });
+                    if (!res.ok) return;
+                    resetCategoryForm();
+                  } finally {
+                    setSavingCat(false);
+                  }
                 }}
                 className="glass-panel rounded-2xl p-5 space-y-3 text-xs"
               >
@@ -1201,11 +1148,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl border border-cyan-500/40 bg-cyan-500/15 text-cyan-300 font-semibold flex items-center gap-1.5"
+                  disabled={savingCat}
+                  className="px-4 py-2 rounded-xl border border-cyan-500/40 bg-cyan-500/15 text-cyan-300 font-semibold flex items-center gap-1.5 disabled:opacity-50"
                 >
-                  <Plus className="w-3.5 h-3.5" />
+                  {savingCat ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Plus className="w-3.5 h-3.5" />
+                  )}
                   <span>
-                    {editingCatId
+                    {savingCat
+                      ? tr('saving', lang)
+                      : editingCatId
                       ? tr('updateItem', lang)
                       : isUr
                       ? 'کیٹیگری شامل کریں'
@@ -1247,19 +1201,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
+                  if (savingCharge) return;
                   if (!chargeNameEn.trim() && !chargeNameUr.trim()) return;
-                  await saveChargeItem({
-                    id: editingChargeId || undefined,
-                    category_id: chargeCatId,
-                    name_en: chargeNameEn.trim(),
-                    name_ur: chargeNameUr.trim(),
-                    default_rate: Number(chargeRate) || 0,
-                    unit_label: chargeUnit.trim() || 'Event',
-                    unit_label_ur: chargeUnitUr.trim(),
-                    is_default_package: chargeDefaultPkg,
-                    is_crate_service: chargeIsCrate,
-                  });
-                  resetChargeForm();
+                  setSavingCharge(true);
+                  try {
+                    const res = await saveChargeItem({
+                      id: editingChargeId || undefined,
+                      category_id: chargeCatId,
+                      name_en: chargeNameEn.trim(),
+                      name_ur: chargeNameUr.trim(),
+                      default_rate: Number(chargeRate) || 0,
+                      unit_label: chargeUnit.trim() || 'Event',
+                      unit_label_ur: chargeUnitUr.trim(),
+                      is_default_package: chargeDefaultPkg,
+                      is_crate_service: chargeIsCrate,
+                    });
+                    if (!res.ok) return;
+                    resetChargeForm();
+                  } finally {
+                    setSavingCharge(false);
+                  }
                 }}
                 className="glass-panel rounded-2xl p-5 space-y-3 text-xs"
               >
@@ -1386,13 +1347,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </label>
                 <button
                   type="submit"
-                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-semibold"
+                  disabled={savingCharge}
+                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-semibold inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
                 >
-                  {editingChargeId
-                    ? tr('updateItem', lang)
-                    : isUr
-                    ? 'چارج شامل کریں'
-                    : 'Add Charge Item'}
+                  {savingCharge && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>
+                    {savingCharge
+                      ? tr('saving', lang)
+                      : editingChargeId
+                      ? tr('updateItem', lang)
+                      : isUr
+                      ? 'چارج شامل کریں'
+                      : 'Add Charge Item'}
+                  </span>
                 </button>
               </form>
             </div>
@@ -1471,11 +1438,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               {canDeleteCatalog && (
                                 <button
                                   type="button"
-                                  onClick={() => softDeleteChargeItem(ch.id)}
-                                  className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-rose-400"
+                                  disabled={deletingChargeId === ch.id}
+                                  onClick={async () => {
+                                    setDeletingChargeId(ch.id);
+                                    try {
+                                      await softDeleteChargeItem(ch.id);
+                                    } finally {
+                                      setDeletingChargeId(null);
+                                    }
+                                  }}
+                                  className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-rose-400 disabled:opacity-50"
                                   title={tr('delete', lang)}
                                 >
-                                  <Trash2 className="w-3.5 h-3.5" />
+                                  {deletingChargeId === ch.id ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  )}
                                 </button>
                               )}
                             </div>
@@ -1491,352 +1470,602 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       )}
 
-      {tab === 'events' && canViewSettings && (
-        <div className={`grid grid-cols-1 ${canEditSettings ? 'md:grid-cols-2' : ''} gap-6`}>
-          {canEditSettings && (
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                if (!etEn.trim() && !etUr.trim()) return;
-                await saveEventType({
-                  id: editingEtId || undefined,
-                  name_en: etEn.trim(),
-                  name_ur: etUr.trim(),
-                  color_hex: etColor,
-                });
-                resetEventTypeForm();
-              }}
-              className="glass-panel rounded-2xl p-5 space-y-4 text-xs"
-            >
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold text-white">
-                  {editingEtId
-                    ? isUr
-                      ? 'تقریب کی قسم میں ترمیم'
-                      : 'Edit Event Type'
-                    : isUr
-                    ? 'نئی تقریب کی قسم شامل کریں'
-                    : 'Add Custom Event Type'}
-                </h3>
-                {editingEtId && (
-                  <button
-                    type="button"
-                    onClick={resetEventTypeForm}
-                    className="text-slate-400 hover:text-white"
-                  >
-                    {tr('cancel', lang)}
-                  </button>
-                )}
+      {tab === 'events' && canViewEventCats && (
+        <div className="space-y-6">
+          {/* Top toolbar: Super Admin Copy from another Hall + In-Use Deactivate Prompt */}
+          {isSuperAdmin && canEditEventCats && otherHallsForCopy.length > 0 && (
+            <div className="glass-panel rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs text-slate-300">
+                <Copy className="w-4 h-4 text-cyan-400 shrink-0" />
+                <span>{tr('copyFromHall', lang)}</span>
               </div>
-              <div>
-                <label className="block text-[11px] text-slate-400 mb-1">
-                  {tr('englishLabel', lang)}
-                </label>
-                <input
-                  type="text"
-                  dir="ltr"
-                  value={etEn}
-                  onChange={(e) => setEtEn(e.target.value)}
-                  placeholder="e.g. Aqeeqah"
-                  className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] text-slate-400 mb-1">
-                  {tr('urduLabel', lang)}
-                </label>
-                <input
-                  type="text"
-                  dir="rtl"
-                  value={etUr}
-                  onChange={(e) => setEtUr(e.target.value)}
-                  placeholder="عقیقہ"
-                  className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white font-urdu"
-                />
-              </div>
-              <div className="flex items-center gap-3">
-                <label className="text-slate-300">
-                  {isUr ? 'کیلنڈر کا رنگ:' : 'Calendar Color:'}
-                </label>
-                <input
-                  type="color"
-                  value={etColor}
-                  onChange={(e) => setEtColor(e.target.value)}
-                  className="w-10 h-8 rounded bg-transparent border-0"
-                />
-              </div>
-              <button
-                type="submit"
-                className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-semibold"
-              >
-                {editingEtId
-                  ? tr('updateItem', lang)
-                  : isUr
-                  ? 'تقریب کی قسم شامل کریں'
-                  : 'Add Event Type'}
-              </button>
-            </form>
-          )}
-
-          <div className="glass-panel rounded-2xl p-5">
-            <h3 className="text-sm font-bold text-white mb-3">
-              {isUr ? 'تقریبات کی اقسام' : 'Configured Event Types'}
-            </h3>
-            <div className="divide-y divide-slate-800/70 text-xs">
-              {activeEventTypes.map((et) => {
-                const missingTr = hasMissingBilingualPair(et.name_en, et.name_ur);
-                return (
-                  <div key={et.id} className="py-2.5 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <span
-                        className="w-3 h-3 rounded-sm shrink-0"
-                        style={{ backgroundColor: et.color_hex }}
-                      />
-                      <span className="font-semibold text-white">
-                        {pickLocalized(et.name_en, et.name_ur, lang)}
-                      </span>
-                      <MissingTranslationIcon show={missingTr} title={missingWarnTitle} />
-                    </div>
-                    {canEditSettings && (
-                      <button
-                        type="button"
-                        onClick={() => startEditEventType(et)}
-                        className="p-1.5 rounded-lg border border-slate-800 text-slate-300 hover:text-cyan-300"
-                        title={tr('edit', lang)}
-                      >
-                        <Edit3 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isSuperAdmin && tab === 'halls' && (
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <form onSubmit={handleSaveHallSubmit} className="glass-panel rounded-2xl p-5 space-y-3 text-xs">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-cyan-400" />
-                <span>
-                  {editingHallId
-                    ? isUr
-                      ? 'ہال میں ترمیم کریں'
-                      : 'Edit Hall'
-                    : isUr
-                    ? 'نیا ہال شامل کریں'
-                    : 'Add New Hall'}
-                </span>
-              </h3>
-              {editingHallId && (
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={copySourceHallId}
+                  onChange={(e) => setCopySourceHallId(e.target.value)}
+                  className="bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white"
+                >
+                  {otherHallsForCopy.map((h) => (
+                    <option key={h.id} value={h.id}>
+                      {pickLocalized(h.name, h.name_ur, lang)}
+                    </option>
+                  ))}
+                </select>
                 <button
                   type="button"
-                  onClick={resetHallForm}
-                  className="text-slate-400 hover:text-white"
+                  disabled={copyingEvents || !copySourceHallId}
+                  onClick={async () => {
+                    if (!copySourceHallId) return;
+                    setCopyingEvents(true);
+                    try {
+                      await copyEventTaxonomyFromHall(copySourceHallId);
+                    } finally {
+                      setCopyingEvents(false);
+                    }
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl border border-cyan-500/40 bg-cyan-500/15 text-cyan-300 text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {copyingEvents ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
+                  <span>{tr('copyListBtn', lang)}</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {inUsePrompt && (
+            <div className="rounded-2xl border border-amber-500/50 bg-amber-500/10 p-4 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="flex items-start gap-2.5 text-amber-200">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-bold">{inUsePrompt.name}</div>
+                  <div className="text-amber-100/90 mt-0.5">{inUsePrompt.message}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const target = inUsePrompt;
+                    setInUsePrompt(null);
+                    if (target.kind === 'category') {
+                      setBusyEventCatId(target.id);
+                      try {
+                        await toggleEventCategoryActive(target.id, false);
+                      } finally {
+                        setBusyEventCatId(null);
+                      }
+                    } else {
+                      setBusyEventTypeId(target.id);
+                      try {
+                        await toggleEventTypeActive(target.id, false);
+                      } finally {
+                        setBusyEventTypeId(null);
+                      }
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-amber-500 text-slate-950 font-bold"
+                >
+                  {tr('deactivateInstead', lang)}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInUsePrompt(null)}
+                  className="px-3 py-1.5 rounded-xl border border-slate-700 text-slate-300"
                 >
                   {tr('cancel', lang)}
                 </button>
-              )}
-            </div>
-            {hallMsg && (
-              <div className="p-2.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 text-cyan-200">
-                {hallMsg}
-              </div>
-            )}
-            <div>
-              <label className="block text-slate-300 mb-1">
-                {isUr ? 'ہال کا نام (انگریزی)' : 'Hall Name (English)'}
-              </label>
-              <input
-                type="text"
-                dir="ltr"
-                value={hallName}
-                onChange={(e) => setHallName(e.target.value)}
-                placeholder="Marquee 2"
-                className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-slate-300 mb-1">
-                {isUr ? 'ہال کا نام (اردو)' : 'Hall Name (Urdu)'}
-              </label>
-              <input
-                type="text"
-                dir="rtl"
-                value={hallNameUr}
-                onChange={(e) => setHallNameUr(e.target.value)}
-                placeholder="مارکی 2"
-                className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white font-urdu"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-slate-300 mb-1">
-                  {isUr ? 'بکنگ کوڈ سابقہ *' : 'Booking Code Prefix *'}
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={hallBookingPrefix}
-                  onChange={(e) => setHallBookingPrefix(e.target.value.toUpperCase())}
-                  placeholder="MQ2"
-                  className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white uppercase tabular-nums"
-                />
-              </div>
-              <div>
-                <label className="block text-slate-300 mb-1">
-                  {isUr ? 'انوائس سابقہ *' : 'Invoice Prefix *'}
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={hallInvoicePrefix}
-                  onChange={(e) => setHallInvoicePrefix(e.target.value.toUpperCase())}
-                  placeholder="INV2"
-                  className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white uppercase tabular-nums"
-                />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-slate-300 mb-1">{tr('phone', lang)}</label>
-                <input
-                  type="text"
-                  value={hallPhone}
-                  onChange={(e) => setHallPhone(e.target.value)}
-                  className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white tabular-nums"
-                />
-              </div>
-              <div>
-                <label className="block text-slate-300 mb-1">{tr('emailAddress', lang)}</label>
-                <input
-                  type="email"
-                  value={hallEmail}
-                  onChange={(e) => setHallEmail(e.target.value)}
-                  className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-slate-300 mb-1">
-                {isUr ? 'پتہ (انگریزی)' : 'Address (English)'}
-              </label>
-              <input
-                type="text"
-                dir="ltr"
-                value={hallAddress}
-                onChange={(e) => setHallAddress(e.target.value)}
-                className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-slate-300 mb-1">
-                {isUr ? 'پتہ (اردو)' : 'Address (Urdu)'}
-              </label>
-              <input
-                type="text"
-                dir="rtl"
-                value={hallAddressUr}
-                onChange={(e) => setHallAddressUr(e.target.value)}
-                className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white font-urdu"
-              />
-            </div>
-            <div>
-              <label className="block text-slate-300 mb-1">
-                {isUr ? 'لوگو لنک (اختیاری)' : 'Logo URL (Optional)'}
-              </label>
-              <input
-                type="text"
-                value={hallLogo}
-                onChange={(e) => setHallLogo(e.target.value)}
-                className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
-              />
-            </div>
-            <label className="flex items-center gap-2 text-slate-300">
-              <input
-                type="checkbox"
-                checked={hallActive}
-                onChange={(e) => setHallActive(e.target.checked)}
-              />
-              <span>{isUr ? 'ہال فعال ہے' : 'Hall Active'}</span>
-            </label>
-            <button
-              type="submit"
-              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-semibold"
-            >
-              {editingHallId
-                ? isUr
-                  ? 'ہال اپڈیٹ کریں'
-                  : 'Update Hall'
-                : isUr
-                ? 'نیا ہال بنائیں'
-                : 'Create Hall'}
-            </button>
-          </form>
+          )}
 
-          <div className="xl:col-span-2 glass-panel rounded-2xl overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white">
-                {isUr ? 'رجسٹرڈ ہالز' : 'Configured Halls'}
-              </h3>
-              <span className="text-xs text-slate-400 tabular-nums">
-                {db.halls.length} {isUr ? 'ہالز' : 'halls'}
-              </span>
-            </div>
-            <div className="divide-y divide-slate-800/70">
-              {db.halls.map((h) => {
-                const missingTr =
-                  hasMissingBilingualPair(h.name, h.name_ur) ||
-                  hasMissingBilingualPair(h.address, h.address_ur);
-                const localizedName = pickLocalized(h.name, h.name_ur, lang);
-                const localizedAddr = pickLocalized(h.address, h.address_ur, lang);
-                return (
-                  <div
-                    key={h.id}
-                    className="p-4 flex flex-wrap items-center justify-between gap-3 text-xs"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <img
-                        src={h.logo_url || HALL_LOGO_SRC}
-                        alt={localizedName}
-                        referrerPolicy="no-referrer"
-                        className="w-10 h-10 rounded-xl object-cover border border-amber-500/30 shrink-0"
-                      />
-                      <div className="min-w-0">
-                        <div className="font-bold text-white flex items-center gap-2">
-                          <span>{localizedName}</span>
-                          <MissingTranslationIcon show={missingTr} title={missingWarnTitle} />
-                        </div>
-                        <div className="text-[11px] text-slate-400 truncate">
-                          {localizedAddr || '—'}
-                        </div>
-                        <div className="text-[11px] text-cyan-300 tabular-nums mt-0.5">
-                          {h.booking_code_prefix}-YYYY-0001 · {h.invoice_prefix}-YYYY-0001 ·{' '}
-                          {h.phone}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`px-2 py-0.5 rounded-md border text-[11px] font-semibold ${
-                          h.is_active
-                            ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
-                            : 'border-rose-500/40 bg-rose-500/10 text-rose-300'
-                        }`}
-                      >
-                        {h.is_active ? tr('active', lang) : tr('inactive', lang)}
+          <div className={`grid grid-cols-1 ${canEditEventCats ? 'xl:grid-cols-3' : ''} gap-6`}>
+            {canEditEventCats && (
+              <div className="space-y-6">
+                {/* Add / Edit Event Category */}
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (savingEventCat) return;
+                    if (!evCatEn.trim() && !evCatUr.trim()) return;
+                    setSavingEventCat(true);
+                    try {
+                      const res = await saveEventCategory({
+                        id: editingEventCatId || undefined,
+                        name_en: evCatEn.trim() || evCatUr.trim(),
+                        name_ur: evCatUr.trim() || evCatEn.trim(),
+                        is_active: evCatActive,
+                      });
+                      if (res.ok) {
+                        if (res.category && !editingEventCatId) {
+                          setEtCatId(res.category.id);
+                        }
+                        resetEventCategoryForm();
+                      }
+                    } finally {
+                      setSavingEventCat(false);
+                    }
+                  }}
+                  className="glass-panel rounded-2xl p-5 space-y-3.5 text-xs"
+                >
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <FolderTree className="w-4 h-4 text-cyan-400" />
+                      <span>
+                        {editingEventCatId
+                          ? isUr
+                            ? 'ایونٹ کیٹیگری میں ترمیم'
+                            : 'Edit Event Category'
+                          : isUr
+                          ? 'نئی ایونٹ کیٹیگری شامل کریں'
+                          : 'Add Event Category'}
                       </span>
+                    </h3>
+                    {editingEventCatId && (
                       <button
                         type="button"
-                        onClick={() => startEditHall(h)}
-                        className="p-1.5 rounded-lg border border-slate-800 text-slate-300 hover:text-cyan-300"
-                        title={tr('edit', lang)}
+                        onClick={resetEventCategoryForm}
+                        className="text-slate-400 hover:text-white"
                       >
-                        <Edit3 className="w-3.5 h-3.5" />
+                        {tr('cancel', lang)}
                       </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">
+                        {tr('englishLabel', lang)}
+                      </label>
+                      <input
+                        type="text"
+                        dir="ltr"
+                        required
+                        value={evCatEn}
+                        onChange={(e) => setEvCatEn(e.target.value)}
+                        placeholder="Wedding Ceremony"
+                        className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">
+                        {tr('urduLabel', lang)}
+                      </label>
+                      <input
+                        type="text"
+                        dir="rtl"
+                        value={evCatUr}
+                        onChange={(e) => setEvCatUr(e.target.value)}
+                        placeholder="شادی کی تقریبات"
+                        className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white font-urdu"
+                      />
+                    </div>
+                  </div>
+                  <label className="inline-flex items-center gap-2 text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={evCatActive}
+                      onChange={(e) => setEvCatActive(e.target.checked)}
+                    />
+                    <span>{tr('active', lang)}</span>
+                  </label>
+                  <button
+                    type="submit"
+                    disabled={savingEventCat}
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-semibold inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  >
+                    {savingEventCat ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="w-3.5 h-3.5" />
+                    )}
+                    <span>
+                      {savingEventCat
+                        ? tr('saving', lang)
+                        : editingEventCatId
+                        ? tr('updateItem', lang)
+                        : isUr
+                        ? 'کیٹیگری محفوظ کریں'
+                        : 'Save Category'}
+                    </span>
+                  </button>
+                </form>
+
+                {/* Add / Edit Event inside a Category */}
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (savingEventType) return;
+                    if (!etEn.trim() && !etUr.trim()) return;
+                    setSavingEventType(true);
+                    try {
+                      const res = await saveEventType({
+                        id: editingEtId || undefined,
+                        category_id: etCatId || null,
+                        name_en: etEn.trim() || etUr.trim(),
+                        name_ur: etUr.trim() || etEn.trim(),
+                        color_hex: etColor,
+                        is_active: etActive,
+                      });
+                      if (!res.ok) return;
+                      resetEventTypeForm();
+                    } finally {
+                      setSavingEventType(false);
+                    }
+                  }}
+                  className="glass-panel rounded-2xl p-5 space-y-3.5 text-xs"
+                >
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <CalendarRange className="w-4 h-4 text-amber-400" />
+                      <span>
+                        {editingEtId
+                          ? isUr
+                            ? 'ایونٹ میں ترمیم'
+                            : 'Edit Event'
+                          : isUr
+                          ? 'نیا ایونٹ شامل کریں'
+                          : 'Add Event'}
+                      </span>
+                    </h3>
+                    {editingEtId && (
+                      <button
+                        type="button"
+                        onClick={resetEventTypeForm}
+                        className="text-slate-400 hover:text-white"
+                      >
+                        {tr('cancel', lang)}
+                      </button>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">
+                      {tr('eventCategory', lang)} *
+                    </label>
+                    <select
+                      required
+                      value={etCatId}
+                      onChange={(e) => setEtCatId(e.target.value)}
+                      className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                    >
+                      {activeEventCategories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name_en} {c.name_ur ? `(${c.name_ur})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">
+                        {tr('englishLabel', lang)}
+                      </label>
+                      <input
+                        type="text"
+                        dir="ltr"
+                        required
+                        value={etEn}
+                        onChange={(e) => setEtEn(e.target.value)}
+                        placeholder="e.g. Baraat"
+                        className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">
+                        {tr('urduLabel', lang)}
+                      </label>
+                      <input
+                        type="text"
+                        dir="rtl"
+                        value={etUr}
+                        onChange={(e) => setEtUr(e.target.value)}
+                        placeholder="بارات"
+                        className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 text-white font-urdu"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <label className="text-slate-300">
+                        {isUr ? 'کیلنڈر کا رنگ:' : 'Calendar Color:'}
+                      </label>
+                      <input
+                        type="color"
+                        value={etColor}
+                        onChange={(e) => setEtColor(e.target.value)}
+                        className="w-10 h-8 rounded bg-transparent border-0"
+                      />
+                    </div>
+                    <label className="inline-flex items-center gap-2 text-slate-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={etActive}
+                        onChange={(e) => setEtActive(e.target.checked)}
+                      />
+                      <span>{tr('active', lang)}</span>
+                    </label>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={savingEventType || activeEventCategories.length === 0}
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-cyan-600 text-slate-950 font-bold inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  >
+                    {savingEventType ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="w-3.5 h-3.5" />
+                    )}
+                    <span>
+                      {savingEventType
+                        ? tr('saving', lang)
+                        : editingEtId
+                        ? tr('updateItem', lang)
+                        : isUr
+                        ? 'ایونٹ محفوظ کریں'
+                        : 'Save Event'}
+                    </span>
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {/* Two-Level Hierarchy List (Side-by-Side EN & UR) */}
+            <div className={`${canEditEventCats ? 'xl:col-span-2' : ''} space-y-4`}>
+              {activeEventCategories.length === 0 && (
+                <div className="glass-panel rounded-2xl p-8 text-center text-xs text-slate-500">
+                  {tr('noRecords', lang)}
+                </div>
+              )}
+
+              {activeEventCategories.map((cat, catIdx) => {
+                const catEvents = activeEventTypes.filter((e) => e.category_id === cat.id);
+                const catMissing = hasMissingBilingualPair(cat.name_en, cat.name_ur);
+                const catBusy = busyEventCatId === cat.id;
+
+                return (
+                  <div
+                    key={cat.id}
+                    className={`glass-panel rounded-2xl overflow-hidden border ${
+                      cat.is_active === false ? 'border-slate-800/60 opacity-75' : 'border-slate-800'
+                    }`}
+                  >
+                    {/* Category Header: EN + UR side by side */}
+                    <div className="px-4 py-3 bg-slate-900/80 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex flex-wrap items-center gap-2.5 min-w-0">
+                        <span className="font-bold text-sm text-white" dir="ltr">
+                          {cat.name_en}
+                        </span>
+                        <span className="text-slate-600">/</span>
+                        <span className="font-bold text-sm text-amber-300 font-urdu" dir="rtl">
+                          {cat.name_ur || '—'}
+                        </span>
+                        <MissingTranslationIcon show={catMissing} title={missingWarnTitle} />
+                        <span
+                          className={`text-[10px] font-semibold px-2 py-0.5 rounded-md ${
+                            cat.is_active !== false
+                              ? 'bg-emerald-500/15 text-emerald-300'
+                              : 'bg-slate-800 text-slate-400'
+                          }`}
+                        >
+                          {cat.is_active !== false ? tr('active', lang) : tr('inactive', lang)}
+                        </span>
+                      </div>
+
+                      {canEditEventCats && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              resetEventTypeForm();
+                              setEtCatId(cat.id);
+                            }}
+                            className="px-2 py-1 rounded-lg border border-cyan-500/30 bg-cyan-500/10 text-cyan-300 text-[11px] font-medium hover:bg-cyan-500/20"
+                          >
+                            + {isUr ? 'ایونٹ' : 'Event'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={catBusy || catIdx === 0}
+                            onClick={() => moveCategoryOrder(cat.id, -1)}
+                            title={tr('moveUp', lang)}
+                            className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-white disabled:opacity-30"
+                          >
+                            <ArrowUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={catBusy || catIdx === activeEventCategories.length - 1}
+                            onClick={() => moveCategoryOrder(cat.id, 1)}
+                            title={tr('moveDown', lang)}
+                            className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-white disabled:opacity-30"
+                          >
+                            <ArrowDown className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={catBusy}
+                            onClick={async () => {
+                              setBusyEventCatId(cat.id);
+                              try {
+                                await toggleEventCategoryActive(cat.id, cat.is_active === false);
+                              } finally {
+                                setBusyEventCatId(null);
+                              }
+                            }}
+                            title={cat.is_active !== false ? tr('deactivate', lang) : tr('active', lang)}
+                            className={`p-1.5 rounded-lg border border-slate-800 ${
+                              cat.is_active !== false
+                                ? 'text-emerald-400 hover:text-amber-300'
+                                : 'text-slate-500 hover:text-emerald-300'
+                            }`}
+                          >
+                            {catBusy ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Power className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => startEditEventCategory(cat)}
+                            title={tr('edit', lang)}
+                            className="p-1.5 rounded-lg border border-slate-800 text-slate-300 hover:text-cyan-300"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          {canDeleteEventCats && (
+                            <button
+                              type="button"
+                              disabled={catBusy}
+                              onClick={async () => {
+                                setBusyEventCatId(cat.id);
+                                try {
+                                  const res = await softDeleteEventCategory(cat.id);
+                                  if (!res.ok && res.inUse && res.error) {
+                                    setInUsePrompt({
+                                      kind: 'category',
+                                      id: cat.id,
+                                      name: `${cat.name_en} / ${cat.name_ur}`,
+                                      message: res.error,
+                                    });
+                                  }
+                                } finally {
+                                  setBusyEventCatId(null);
+                                }
+                              }}
+                              title={tr('delete', lang)}
+                              className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-rose-400 disabled:opacity-40"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Nested Events under this Category */}
+                    <div className="divide-y divide-slate-800/60 px-4 text-xs">
+                      {catEvents.length === 0 ? (
+                        <div className="py-3 text-slate-500 italic">
+                          {isUr ? 'اس کیٹیگری میں کوئی ذیلی ایونٹ نہیں' : 'No events in this category'}
+                        </div>
+                      ) : (
+                        catEvents.map((et, evIdx) => {
+                          const evMissing = hasMissingBilingualPair(et.name_en, et.name_ur);
+                          const evBusy = busyEventTypeId === et.id;
+                          return (
+                            <div
+                              key={et.id}
+                              className={`py-2.5 flex flex-wrap items-center justify-between gap-2 ${
+                                et.is_active === false ? 'opacity-60' : ''
+                              }`}
+                            >
+                              <div className="flex flex-wrap items-center gap-2.5 min-w-0">
+                                <span
+                                  className="w-3 h-3 rounded-sm shrink-0"
+                                  style={{ backgroundColor: et.color_hex }}
+                                />
+                                <span className="font-semibold text-slate-100" dir="ltr">
+                                  {et.name_en}
+                                </span>
+                                <span className="text-slate-600">·</span>
+                                <span className="font-semibold text-cyan-200 font-urdu" dir="rtl">
+                                  {et.name_ur || '—'}
+                                </span>
+                                <MissingTranslationIcon show={evMissing} title={missingWarnTitle} />
+                                {et.is_active === false && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
+                                    {tr('inactive', lang)}
+                                  </span>
+                                )}
+                              </div>
+
+                              {canEditEventCats && (
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    disabled={evBusy || evIdx === 0}
+                                    onClick={() => moveEventOrder(cat.id, et.id, -1)}
+                                    title={tr('moveUp', lang)}
+                                    className="p-1 rounded-lg border border-slate-800 text-slate-400 hover:text-white disabled:opacity-30"
+                                  >
+                                    <ArrowUp className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={evBusy || evIdx === catEvents.length - 1}
+                                    onClick={() => moveEventOrder(cat.id, et.id, 1)}
+                                    title={tr('moveDown', lang)}
+                                    className="p-1 rounded-lg border border-slate-800 text-slate-400 hover:text-white disabled:opacity-30"
+                                  >
+                                    <ArrowDown className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={evBusy}
+                                    onClick={async () => {
+                                      setBusyEventTypeId(et.id);
+                                      try {
+                                        await toggleEventTypeActive(et.id, et.is_active === false);
+                                      } finally {
+                                        setBusyEventTypeId(null);
+                                      }
+                                    }}
+                                    title={et.is_active !== false ? tr('deactivate', lang) : tr('active', lang)}
+                                    className={`p-1 rounded-lg border border-slate-800 ${
+                                      et.is_active !== false
+                                        ? 'text-emerald-400 hover:text-amber-300'
+                                        : 'text-slate-500 hover:text-emerald-300'
+                                    }`}
+                                  >
+                                    {evBusy ? (
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                    ) : (
+                                      <Power className="w-3 h-3" />
+                                    )}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => startEditEventType(et)}
+                                    title={tr('edit', lang)}
+                                    className="p-1 rounded-lg border border-slate-800 text-slate-300 hover:text-cyan-300"
+                                  >
+                                    <Edit3 className="w-3 h-3" />
+                                  </button>
+                                  {canDeleteEventCats && (
+                                    <button
+                                      type="button"
+                                      disabled={evBusy}
+                                      onClick={async () => {
+                                        setBusyEventTypeId(et.id);
+                                        try {
+                                          const res = await softDeleteEventType(et.id);
+                                          if (!res.ok && res.inUse && res.error) {
+                                            setInUsePrompt({
+                                              kind: 'event',
+                                              id: et.id,
+                                              name: `${et.name_en} / ${et.name_ur}`,
+                                              message: res.error,
+                                            });
+                                          }
+                                        } finally {
+                                          setBusyEventTypeId(null);
+                                        }
+                                      }}
+                                      title={tr('delete', lang)}
+                                      className="p-1 rounded-lg border border-slate-800 text-slate-400 hover:text-rose-400 disabled:opacity-40"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
                   </div>
                 );

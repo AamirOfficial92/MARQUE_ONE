@@ -54,13 +54,37 @@ export interface Hall {
   id: string;
   name: string;
   name_ur: string;
+  tagline_en?: string;
+  tagline_ur?: string;
   address: string;
   address_ur: string;
+  city?: string;
   phone: string;
+  phone_secondary?: string;
+  whatsapp?: string;
   email: string;
+  website?: string;
+  facebook_url?: string;
+  instagram_url?: string;
+  tiktok_url?: string;
+  youtube_url?: string;
+  x_url?: string;
+  google_maps_url?: string;
   logo_url: string;
+  signature_url?: string;
+  ntn?: string;
+  strn?: string;
+  bank_account_title?: string;
+  bank_name?: string;
+  bank_iban?: string;
+  show_bank_details?: boolean;
+  invoice_footer_en?: string;
+  invoice_footer_ur?: string;
+  terms_en?: string;
+  terms_ur?: string;
   booking_code_prefix: string;
   invoice_prefix: string;
+  currency?: string;
   is_active: boolean;
   created_at: string;
   updated_at?: string;
@@ -135,14 +159,29 @@ export interface Customer {
   updated_at?: string;
 }
 
-export interface EventTypeItem {
+export interface EventCategory {
   id: string;
   hall_id: string;
   name_en: string;
   name_ur: string;
+  sort_order: number;
+  is_active: boolean;
+  deleted_at: string | null;
+  created_at?: string;
+}
+
+export interface EventTypeItem {
+  id: string;
+  hall_id: string;
+  category_id: string | null;
+  name_en: string;
+  name_ur: string;
   color_hex: string;
   is_default: boolean;
+  sort_order: number;
+  is_active: boolean;
   deleted_at: string | null;
+  created_at?: string;
 }
 
 export interface ChargeCategory {
@@ -227,7 +266,10 @@ export interface Booking {
   customer_phone: string;
   customer_nic: string;
   customer_email?: string;
+  event_category_id?: string | null;
+  event_type_id?: string | null;
   event_type: string;
+  event_other_name?: string;
   event_date: string;
   start_time: string;
   end_time: string;
@@ -296,7 +338,22 @@ export interface ExpenseCategory {
   hall_id: string;
   name_en: string;
   name_ur: string;
+  sort_order: number;
+  is_active: boolean;
   deleted_at: string | null;
+  created_at?: string;
+}
+
+export interface ExpenseSubcategory {
+  id: string;
+  hall_id: string;
+  category_id: string;
+  name_en: string;
+  name_ur: string;
+  sort_order: number;
+  is_active: boolean;
+  deleted_at: string | null;
+  created_at?: string;
 }
 
 export interface Employee {
@@ -342,6 +399,10 @@ export interface Expense {
   category_id: string;
   category_name: string;
   category_name_ur?: string;
+  subcategory_id?: string | null;
+  subcategory_name?: string;
+  subcategory_name_ur?: string;
+  manual_description?: string;
   booking_id?: string | null;
   employee_id?: string | null;
   amount: number;
@@ -444,6 +505,7 @@ export interface AppDatabase {
   userPermissions: UserPermission[];
   settings: HallSettings;
   customers: Customer[];
+  eventCategories: EventCategory[];
   eventTypes: EventTypeItem[];
   chargeCategories: ChargeCategory[];
   chargesCatalog: ChargeCatalogItem[];
@@ -453,6 +515,7 @@ export interface AppDatabase {
   installments: InstallmentSchedule[];
   payments: Payment[];
   expenseCategories: ExpenseCategory[];
+  expenseSubcategories: ExpenseSubcategory[];
   employees: Employee[];
   attendance: EmployeeAttendance[];
   advances: EmployeeAdvance[];

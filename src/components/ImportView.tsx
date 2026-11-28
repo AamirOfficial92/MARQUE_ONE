@@ -1,34 +1,39 @@
 import React, { useMemo, useState } from 'react';
-import { CheckCircle2, Database, Download, FileSpreadsheet, Upload } from 'lucide-react';
+import { CheckCircle2, Database, Download, FileSpreadsheet, Loader2, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useApp } from '../context/AppContext';
+import { pickLocalized, tr, translateEventType, translateFloor } from '../i18n/translations';
 import { Booking, FloorName } from '../types';
 import { findBookingConflict } from '../utils/formatters';
 
 const BOOKING_TARGET_FIELDS = [
-  { key: 'customer_name', label: 'Customer Name *' },
-  { key: 'customer_phone', label: 'Mobile Phone' },
-  { key: 'customer_nic', label: 'CNIC Number' },
-  { key: 'customer_address', label: 'Address' },
-  { key: 'event_type', label: 'Event Type' },
-  { key: 'event_date', label: 'Event Date (YYYY-MM-DD) *' },
-  { key: 'start_time', label: 'Start Time (HH:MM)' },
-  { key: 'end_time', label: 'End Time (HH:MM)' },
-  { key: 'floors', label: 'Floors (e.g. First, Second or Full Hall)' },
-  { key: 'guests_count', label: 'Guests Count' },
-  { key: 'hall_rent', label: 'Hall Rent (PKR)' },
-  { key: 'status', label: 'Status' },
-  { key: 'notes', label: 'Notes' },
+  { key: 'customer_name', en: 'Customer Name *', ur: 'گاہک کا نام *' },
+  { key: 'customer_phone', en: 'Mobile Phone', ur: 'موبائل نمبر' },
+  { key: 'customer_nic', en: 'CNIC Number', ur: 'شناختی کارڈ نمبر' },
+  { key: 'customer_address', en: 'Address', ur: 'پتہ' },
+  { key: 'event_type', en: 'Event Type', ur: 'تقریب کی قسم' },
+  { key: 'event_date', en: 'Event Date (YYYY-MM-DD) *', ur: 'تقریب کی تاریخ (YYYY-MM-DD) *' },
+  { key: 'start_time', en: 'Start Time (HH:MM)', ur: 'آغاز کا وقت (HH:MM)' },
+  { key: 'end_time', en: 'End Time (HH:MM)', ur: 'اختتام کا وقت (HH:MM)' },
+  { key: 'floors', en: 'Floors (e.g. First, Second or Full Hall)', ur: 'فلورز (مثلاً First, Second یا Full Hall)' },
+  { key: 'guests_count', en: 'Guests Count', ur: 'مہمانوں کی تعداد' },
+  { key: 'hall_rent', en: 'Hall Rent (PKR)', ur: 'ہال کرایہ (PKR)' },
+  { key: 'status', en: 'Status', ur: 'حالت' },
+  { key: 'notes', en: 'Notes', ur: 'مزید تفصیلات' },
 ] as const;
 
 export const ImportView: React.FC = () => {
-  const { db, rawDb, activeHall, currentUser, can, importBookingsBatch } = useApp();
+  const { db, rawDb, activeHall, lang, currentUser, can, importBookingsBatch } = useApp();
+  const isUr = lang === 'ur';
   const canEditImport = can('backup_import', 'edit');
   const isSuperAdmin = currentUser?.role === 'super_admin';
+  const activeHallName = pickLocalized(activeHall.name, activeHall.name_ur, lang);
+
   const [sheetHeaders, setSheetHeaders] = useState<string[]>([]);
   const [rawRows, setRawRows] = useState<Record<string, unknown>[]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [result, setResult] = useState<{ imported: number; skipped: number; errors: string[] } | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -47,7 +52,6 @@ export const ImportView: React.FC = () => {
       setSheetHeaders(headers);
       setRawRows(json);
 
-      // Auto-guess mappings by header similarity
       const autoMap: Record<string, string> = {};
       for (const field of BOOKING_TARGET_FIELDS) {
         const match = headers.find((h) => {
@@ -139,15 +143,20 @@ export const ImportView: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'marquee1-import-template.csv';
+    a.download = 'marquee-import-template.csv';
     a.click();
     URL.revokeObjectURL(url);
   };
 
   const handleConfirmImport = async () => {
-    if (!canEditImport) return;
-    const res = await importBookingsBatch(mappedPreview.map((m) => m.candidate));
-    setResult(res);
+    if (!canEditImport || importing) return;
+    setImporting(true);
+    try {
+      const res = await importBookingsBatch(mappedPreview.map((m) => m.candidate));
+      setResult(res);
+    } finally {
+      setImporting(false);
+    }
   };
 
   const handleDownloadJsonBackup = () => {
@@ -188,11 +197,19 @@ export const ImportView: React.FC = () => {
           <h2 className="text-base font-bold text-white flex items-center gap-2">
             <Database className="w-5 h-5 text-violet-400" />
             <span>
-              {isSuperAdmin ? 'System Backup (All Halls)' : `${activeHall.name} Data Backup`}
+              {isSuperAdmin
+                ? isUr
+                  ? 'مکمل سسٹم بیک اپ (تمام ہالز)'
+                  : 'System Backup (All Halls)'
+                : isUr
+                ? `${activeHallName} ڈیٹا بیک اپ`
+                : `${activeHallName} Data Backup`}
             </span>
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            Export permitted hall records as a JSON snapshot or multi-sheet Excel workbook.
+            {isUr
+              ? 'اپنے مجاز ہال ریکارڈز کو JSON فائل یا ایکسل (.xlsx) ورک بک کے طور پر محفوظ کریں۔'
+              : 'Export permitted hall records as a JSON snapshot or multi-sheet Excel workbook.'}
           </p>
         </div>
 
@@ -203,7 +220,7 @@ export const ImportView: React.FC = () => {
             className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold flex items-center gap-1.5"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>Download JSON Backup</span>
+            <span>{isUr ? 'JSON بیک اپ ڈاؤن لوڈ' : 'Download JSON Backup'}</span>
           </button>
           <button
             type="button"
@@ -211,7 +228,7 @@ export const ImportView: React.FC = () => {
             className="px-4 py-2 rounded-xl border border-emerald-500/40 bg-emerald-500/15 text-emerald-300 text-xs font-semibold flex items-center gap-1.5"
           >
             <FileSpreadsheet className="w-3.5 h-3.5" />
-            <span>Download Excel (.xlsx)</span>
+            <span>{isUr ? 'ایکسل (.xlsx) ڈاؤن لوڈ' : 'Download Excel (.xlsx)'}</span>
           </button>
         </div>
       </div>
@@ -220,10 +237,16 @@ export const ImportView: React.FC = () => {
         <div>
           <h2 className="text-base font-bold text-white flex items-center gap-2">
             <FileSpreadsheet className="w-5 h-5 text-cyan-400" />
-            <span>Import Bookings from Google Sheets (CSV / Excel)</span>
+            <span>
+              {isUr
+                ? 'گوگل شیٹس / ایکسل سے بکنگز امپورٹ کریں'
+                : 'Import Bookings from Google Sheets (CSV / Excel)'}
+            </span>
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            Export your Google Sheet as .csv or .xlsx, map columns below, verify double-booking checks, and import.
+            {isUr
+              ? 'اپنی شیٹ .csv یا .xlsx فارمیٹ میں ایکسپورٹ کریں، نیچے کالم میپ کریں، ڈبل بکنگ چیک کریں اور امپورٹ کریں۔'
+              : 'Export your Google Sheet as .csv or .xlsx, map columns below, verify double-booking checks, and import.'}
           </p>
         </div>
 
@@ -234,13 +257,13 @@ export const ImportView: React.FC = () => {
             className="px-3.5 py-2 rounded-xl border border-slate-700 bg-slate-900 text-xs font-medium text-slate-200 flex items-center gap-1.5 hover:border-cyan-500/40"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>Sample CSV Template</span>
+            <span>{isUr ? 'نمونہ CSV ٹیمپلیٹ' : 'Sample CSV Template'}</span>
           </button>
 
           {canEditImport && (
             <label className="cursor-pointer px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold flex items-center gap-1.5">
               <Upload className="w-3.5 h-3.5" />
-              <span>Upload CSV / XLSX</span>
+              <span>{isUr ? 'CSV / XLSX اپ لوڈ کریں' : 'Upload CSV / XLSX'}</span>
               <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileUpload} className="hidden" />
             </label>
           )}
@@ -252,7 +275,9 @@ export const ImportView: React.FC = () => {
           <div className="font-bold text-emerald-400 flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4" />
             <span>
-              Import complete: {result.imported} bookings added, {result.skipped} skipped.
+              {isUr
+                ? `امپورٹ مکمل: ${result.imported} بکنگز شامل ہوئیں، ${result.skipped} نظر انداز ہوئیں۔`
+                : `Import complete: ${result.imported} bookings added, ${result.skipped} skipped.`}
             </span>
           </div>
           {result.errors.length > 0 && (
@@ -268,17 +293,21 @@ export const ImportView: React.FC = () => {
       {sheetHeaders.length > 0 && (
         <>
           <div className="glass-panel rounded-2xl p-5">
-            <h3 className="text-sm font-bold text-white mb-4">Map Spreadsheet Columns</h3>
+            <h3 className="text-sm font-bold text-white mb-4">
+              {isUr ? 'اسپریڈشیٹ کالمز کا انتخاب کریں' : 'Map Spreadsheet Columns'}
+            </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {BOOKING_TARGET_FIELDS.map((field) => (
                 <div key={field.key}>
-                  <label className="block text-[11px] text-slate-400 mb-1">{field.label}</label>
+                  <label className="block text-[11px] text-slate-400 mb-1">
+                    {isUr ? field.ur : field.en}
+                  </label>
                   <select
                     value={mapping[field.key] || ''}
                     onChange={(e) => setMapping((prev) => ({ ...prev, [field.key]: e.target.value }))}
                     className="w-full bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white"
                   >
-                    <option value="">-- Ignore --</option>
+                    <option value="">{isUr ? '-- نظر انداز کریں --' : '-- Ignore --'}</option>
                     {sheetHeaders.map((h) => (
                       <option key={h} value={h}>
                         {h}
@@ -292,14 +321,26 @@ export const ImportView: React.FC = () => {
 
           <div className="glass-panel rounded-2xl overflow-hidden">
             <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white">Preview ({mappedPreview.length} rows)</h3>
+              <h3 className="text-sm font-bold text-white">
+                {isUr
+                  ? `پیش نظارہ (${mappedPreview.length} قطاریں)`
+                  : `Preview (${mappedPreview.length} rows)`}
+              </h3>
               {canEditImport && (
                 <button
                   type="button"
+                  disabled={importing}
                   onClick={handleConfirmImport}
-                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold"
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-50"
                 >
-                  Confirm & Import Valid Rows
+                  {importing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>
+                    {importing
+                      ? tr('saving', lang)
+                      : isUr
+                      ? 'درست قطاروں کی تصدیق اور امپورٹ کریں'
+                      : 'Confirm & Import Valid Rows'}
+                  </span>
                 </button>
               )}
             </div>
@@ -307,11 +348,13 @@ export const ImportView: React.FC = () => {
               <table className="w-full text-xs">
                 <thead className="bg-slate-900/70 text-slate-400 border-b border-slate-800">
                   <tr>
-                    <th className="py-2.5 px-4 text-start">Customer</th>
-                    <th className="py-2.5 px-4 text-start">Event & Date</th>
-                    <th className="py-2.5 px-4 text-start">Floors</th>
-                    <th className="py-2.5 px-4 text-end">Rent</th>
-                    <th className="py-2.5 px-4 text-start">Validation</th>
+                    <th className="py-2.5 px-4 text-start">{tr('customerName', lang)}</th>
+                    <th className="py-2.5 px-4 text-start">
+                      {isUr ? 'تقریب اور تاریخ' : 'Event & Date'}
+                    </th>
+                    <th className="py-2.5 px-4 text-start">{tr('floors', lang)}</th>
+                    <th className="py-2.5 px-4 text-end">{tr('hallRent', lang)}</th>
+                    <th className="py-2.5 px-4 text-start">{isUr ? 'جانچ' : 'Validation'}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/70">
@@ -322,17 +365,23 @@ export const ImportView: React.FC = () => {
                         <div className="text-[11px] text-slate-400 tabular-nums">{candidate.customer_phone}</div>
                       </td>
                       <td className="py-2.5 px-4 tabular-nums text-slate-200">
-                        {candidate.event_type} · {candidate.event_date || 'Missing'} ({candidate.start_time}–{candidate.end_time})
+                        {translateEventType(candidate.event_type || '', lang, db.eventTypes)} · {candidate.event_date || (isUr ? 'غائب' : 'Missing')} ({candidate.start_time}–{candidate.end_time})
                       </td>
-                      <td className="py-2.5 px-4 text-cyan-300">{candidate.floors?.join(', ')}</td>
+                      <td className="py-2.5 px-4 text-cyan-300">
+                        {candidate.floors?.map((f) => translateFloor(f, lang, db.floors)).join(isUr ? '، ' : ', ')}
+                      </td>
                       <td className="py-2.5 px-4 text-end tabular-nums text-white">{candidate.hall_rent}</td>
                       <td className="py-2.5 px-4">
                         {conflict ? (
-                          <span className="text-rose-400 font-semibold">Conflict: {conflict.booking_code}</span>
+                          <span className="text-rose-400 font-semibold">
+                            {isUr ? `تصادم: ${conflict.booking_code}` : `Conflict: ${conflict.booking_code}`}
+                          </span>
                         ) : !candidate.customer_name || !candidate.event_date ? (
-                          <span className="text-amber-400">Missing required fields</span>
+                          <span className="text-amber-400">
+                            {isUr ? 'لازمی خانے خالی ہیں' : 'Missing required fields'}
+                          </span>
                         ) : (
-                          <span className="text-emerald-400">Ready</span>
+                          <span className="text-emerald-400">{isUr ? 'تیار' : 'Ready'}</span>
                         )}
                       </td>
                     </tr>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Ban, CheckCircle2, ShieldAlert, X } from 'lucide-react';
+import { Ban, CheckCircle2, Loader2, ShieldAlert, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { tr, translatePaymentMode } from '../i18n/translations';
 import { Booking, PaymentMode } from '../types';
@@ -77,8 +77,15 @@ export const CancelBookingModal: React.FC<CancelBookingModalProps> = ({ booking,
       return;
     }
 
-    await cancelBooking(booking.id, details);
+    const res = await cancelBooking(booking.id, details);
     setSaving(false);
+    if (!res.ok) {
+      setErrorMsg(
+        res.error ||
+          (isUr ? 'بکنگ منسوخ نہیں ہو سکی۔' : 'Could not cancel booking.')
+      );
+      return;
+    }
     onClose();
   };
 
@@ -272,19 +279,22 @@ export const CancelBookingModal: React.FC<CancelBookingModalProps> = ({ booking,
               <button
                 type="submit"
                 disabled={saving}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold"
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold disabled:opacity-50 inline-flex items-center gap-1.5"
               >
-                {saving
-                  ? isUr
-                    ? 'جمع ہو رہا ہے...'
-                    : 'Submitting...'
-                  : isManager
-                  ? isUr
-                    ? 'منسوخی کی درخواست بھیجیں'
-                    : 'Submit Cancellation Request'
-                  : isUr
-                  ? 'منسوخی کی تصدیق کریں'
-                  : 'Confirm Cancellation'}
+                {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>
+                  {saving
+                    ? isUr
+                      ? 'جمع ہو رہا ہے...'
+                      : 'Submitting...'
+                    : isManager
+                    ? isUr
+                      ? 'منسوخی کی درخواست بھیجیں'
+                      : 'Submit Cancellation Request'
+                    : isUr
+                    ? 'منسوخی کی تصدیق کریں'
+                    : 'Confirm Cancellation'}
+                </span>
               </button>
             </div>
           </form>
